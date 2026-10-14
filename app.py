@@ -208,8 +208,9 @@ def fijar_visibilidad_texto(fig):
 
     maximo = max(maximos) if maximos else 0
 
+    # Solo ajusta el rango del eje Y; conserva los márgenes
+    # y el alto que cada gráfico definió, para no deformarlo.
     fig.update_layout(
-        margin=dict(l=20, r=45, t=75, b=55),
         yaxis=dict(
             rangemode="tozero",
             range=[0, maximo * 1.30 if maximo > 0 else 1],
@@ -220,15 +221,37 @@ def fijar_visibilidad_texto(fig):
     return fig
 
 
+# Tamaño fijo para todos los gráficos: evita que se
+# deformen al redimensionar la ventana del navegador.
+ANCHO_GRAFICO = 1000
+ALTO_GRAFICO = 450
+
+
 def mostrar_grafico(fig):
-    """Configuración común para los gráficos Plotly."""
+    """Configuración común para los gráficos Plotly.
+
+    Con tamaño fijo y responsive desactivado, el gráfico
+    no se estira ni se deforma al cambiar el tamaño de
+    la ventana o al interactuar con él.
+    """
+    # Fijar dimensiones si el gráfico no las definió.
+    if fig.layout.height is None:
+        fig.update_layout(height=ALTO_GRAFICO)
+    if fig.layout.width is None:
+        fig.update_layout(width=ANCHO_GRAFICO)
+
     st.plotly_chart(
         fig,
-        use_container_width=True,
+        use_container_width=False,
         theme="streamlit",
         config={
-            "responsive": True,
+            "responsive": False,
             "displaylogo": False,
+            "modeBarButtonsToRemove": [
+                "toggleSpikelines",
+                "hoverClosestCartesian",
+                "hoverCompareCartesian",
+            ],
         },
     )
 
