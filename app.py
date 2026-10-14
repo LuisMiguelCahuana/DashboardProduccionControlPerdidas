@@ -313,16 +313,30 @@ if fechas_validas.empty:
 fecha_min = fechas_validas.min().normalize()
 fecha_max = fechas_validas.max().normalize()
 
-fecha_filtro = st.sidebar.date_input(
+# Solo se muestran los días que TIENEN REGISTROS dentro del
+# periodo seleccionado (no cualquier día del calendario).
+dias_con_registros = sorted(
+    fechas_validas.dt.normalize().dt.date.unique()
+)
+
+opciones_fecha = ["TODOS"] + dias_con_registros
+
+fecha_opcion = st.sidebar.selectbox(
     "📆 Fecha (día específico)",
-    value=None,  # None = sin filtro de día
-    min_value=fecha_min.date(),
-    max_value=fecha_max.date(),
+    options=opciones_fecha,
+    index=0,
+    format_func=lambda d: (
+        "Todos los días"
+        if d == "TODOS"
+        else d.strftime("%d/%m/%Y")
+    ),
     help=(
-        "Si seleccionas una fecha, solo se verán los registros de ese "
-        "día. Déjalo vacío para ver todo el periodo."
+        "Solo aparecen los días con registros dentro del periodo "
+        "seleccionado. Elige 'Todos los días' para ver todo el periodo."
     ),
 )
+
+fecha_filtro = None if fecha_opcion == "TODOS" else fecha_opcion
 
 # ------------------------------------------------------------
 # 3. FILTROS ADICIONALES
