@@ -1,4 +1,3 @@
-
 import io
 import re
 import calendar
@@ -427,594 +426,585 @@ c3.metric(
 cuadrillas_activas = df_filtrado["cuadrilla"].nunique()
 c4.metric("Cuadrillas activas", f"{cuadrillas_activas:,}")
 
-st.divider()
-
 
 # ============================================================
-# MEJORA: SELECTOR PARA CARGAR UN SOLO REPORTE A LA VEZ
+# TODOS LOS REPORTES SE MUESTRAN EN LA MISMA PÁGINA
+# (El selector "Reporte que desea visualizar" fue eliminado)
 # ============================================================
-
-reporte_seleccionado = st.sidebar.selectbox(
-    "📊 Reporte que desea visualizar",
-    [
-        "Producción por día",
-        "Producción por cuadrilla",
-        "Monto por cuadrilla",
-        "Producción por zona",
-        "Producción por proceso",
-        "Top códigos de actividad",
-        "Resumen cuadrilla por día",
-        "Detalle de registros",
-    ],
-)
-
-st.subheader(f"📊 {reporte_seleccionado}")
 
 
 # ============================================================
 # REPORTE 1: PRODUCCIÓN POR DÍA
 # ============================================================
 
-if reporte_seleccionado == "Producción por día":
+st.divider()
+st.subheader("📊 Producción por día")
 
-    df_grafico_dia = df_filtrado.dropna(subset=["_fecha_dt"]).copy()
+df_grafico_dia = df_filtrado.dropna(subset=["_fecha_dt"]).copy()
 
-    if df_grafico_dia.empty:
-        st.warning("No hay fechas válidas para generar el gráfico.")
-    else:
-        df_grafico_dia["dia"] = (
-            df_grafico_dia["_fecha_dt"].dt.normalize()
-        )
-
-        por_dia = (
-            df_grafico_dia
-            .groupby("dia", as_index=False)
-            .agg(
-                registros=("cantidad", "size"),
-                cantidad=("cantidad", "sum"),
-                costo_total=("costo_total", "sum"),
-                cuadrillas=("cuadrilla", "nunique"),
-            )
-        )
-
-        # Si se elige un mes, se mantiene su calendario completo.
-        # Si se eligen TODOS, se muestran solo los días con registros.
-        # Esto evita generar miles de barras innecesarias.
-        if fecha_filtro is not None:
-            fecha_seleccionada = pd.to_datetime(
-                fecha_filtro,
-                dayfirst=True,
-                errors="coerce",
-            )
-
-            if pd.notna(fecha_seleccionada):
-                calendario_completo = pd.DatetimeIndex(
-                    [fecha_seleccionada.normalize()]
-                )
-            else:
-                calendario_completo = pd.DatetimeIndex(
-                    por_dia["dia"].sort_values().unique()
-                )
-
-        elif periodo_filtro != "TODOS":
-            texto_periodo = str(periodo_filtro).strip()
-
-            if re.fullmatch(r"\d{6}", texto_periodo):
-                anio = int(texto_periodo[:4])
-                mes = int(texto_periodo[4:6])
-
-                fecha_inicio = pd.Timestamp(anio, mes, 1)
-                ultimo_dia = calendar.monthrange(anio, mes)[1]
-                fecha_fin = pd.Timestamp(anio, mes, ultimo_dia)
-
-                calendario_completo = pd.date_range(
-                    start=fecha_inicio,
-                    end=fecha_fin,
-                    freq="D",
-                )
-            else:
-                calendario_completo = pd.DatetimeIndex(
-                    por_dia["dia"].sort_values().unique()
-                )
-        else:
-            calendario_completo = pd.DatetimeIndex(
-                por_dia["dia"].sort_values().unique()
-            )
-
-        por_dia = (
-            por_dia
-            .set_index("dia")
-            .reindex(calendario_completo)
-            .rename_axis("dia")
-            .reset_index()
-        )
-
-        columnas_numericas = [
-            "registros",
-            "cantidad",
-            "costo_total",
-            "cuadrillas",
-        ]
-
-        por_dia[columnas_numericas] = (
-            por_dia[columnas_numericas].fillna(0)
-        )
-
-        por_dia["registros"] = por_dia["registros"].astype(int)
-        por_dia["cuadrillas"] = por_dia["cuadrillas"].astype(int)
-        por_dia = por_dia.sort_values("dia").reset_index(drop=True)
-
-        pesta_grafico, pesta_tabla = st.tabs(["📊 Gráfico", "📋 Tabla"])
-
-        with pesta_grafico:
-            fig_dia = go.Figure()
-
-            fig_dia.add_trace(
-                go.Bar(
-                    x=por_dia["dia"],
-                    y=por_dia["cantidad"],
-                    name="Cantidad",
-                    marker_color="#1f77b4",
-                    text=por_dia["costo_total"].apply(etiqueta_costo),
-                    customdata=por_dia["costo_total"],
-                    hovertemplate=(
-                        "Día: %{x|%d/%m/%Y}<br>"
-                        "Cantidad: %{y:,.0f}<br>"
-                        "Costo total: S/ %{customdata:,.2f}"
-                        "<extra></extra>"
-                    ),
-                    **estilo_barra_con_costo(por_dia["cantidad"]),
-                )
-            )
-
-            fig_dia.update_layout(
-                title="Producción por día (etiqueta = costo total S/)",
-                xaxis=dict(
-                    title="Día",
-                    type="date",
-                    tickformat="%d/%m",
-                    tickangle=-45,
-                ),
-                yaxis=dict(title="Cantidad"),
-                showlegend=False,
-                height=450,
-                margin=dict(l=10, r=10, t=50, b=70),
-            )
-
-            fijar_visibilidad_texto(fig_dia)
-            mostrar_grafico(fig_dia)
-
-        with pesta_tabla:
-            por_dia_mostrar = por_dia.copy()
-            por_dia_mostrar["dia"] = por_dia_mostrar["dia"].dt.strftime(
-                "%d/%m/%Y"
-            )
-            por_dia_mostrar["costo_total"] = (
-                por_dia_mostrar["costo_total"].round(2)
-            )
-
-            st.dataframe(
-                por_dia_mostrar,
-                use_container_width=True,
-                hide_index=True,
-            )
-
-            descargar_excel(
-                por_dia_mostrar,
-                f"produccion_por_dia_{datetime.now().strftime('%Y%m%d')}.xlsx",
-            )
-
-
-# ============================================================
-# REPORTE 2: PRODUCCIÓN POR CUADRILLA
-# ============================================================
-
-elif reporte_seleccionado == "Producción por cuadrilla":
-
-    por_cuadrilla = (
-        df_filtrado.groupby("cuadrilla")
-        .agg(
-            registros=("cantidad", "size"),
-            cantidad=("cantidad", "sum"),
-            costo_total=("costo_total", "sum"),
-            dias_trabajados=(
-                "_fecha_dt",
-                lambda x: x.dropna().dt.normalize().nunique(),
-            ),
-        )
-        .reset_index()
-        .sort_values("cantidad", ascending=False)
+if df_grafico_dia.empty:
+    st.warning("No hay fechas válidas para generar el gráfico.")
+else:
+    df_grafico_dia["dia"] = (
+        df_grafico_dia["_fecha_dt"].dt.normalize()
     )
 
-    pesta_grafico, pesta_tabla = st.tabs(["📊 Gráfico", "📋 Tabla"])
-
-    with pesta_grafico:
-        fig_cuadrilla = px.bar(
-            por_cuadrilla,
-            x="cuadrilla",
-            y="cantidad",
-            color_discrete_sequence=["#2ca02c"],
-            text=por_cuadrilla["costo_total"].apply(etiqueta_costo),
-            custom_data=["costo_total", "dias_trabajados"],
-            title="Cantidad producida por cuadrilla (etiqueta = costo total S/)",
-        )
-
-        fig_cuadrilla.update_traces(
-            hovertemplate=(
-                "Cuadrilla: %{x}<br>"
-                "Cantidad: %{y:,.0f}<br>"
-                "Costo total: S/ %{customdata[0]:,.2f}<br>"
-                "Días trabajados: %{customdata[1]}"
-                "<extra></extra>"
-            ),
-            **estilo_barra_con_costo(por_cuadrilla["cantidad"]),
-        )
-
-        fig_cuadrilla.update_layout(
-            xaxis_title="Cuadrilla / Técnico",
-            yaxis_title="Cantidad",
-            showlegend=False,
-            height=450,
-            margin=dict(l=10, r=10, t=50, b=10),
-        )
-
-        fijar_visibilidad_texto(fig_cuadrilla)
-        mostrar_grafico(fig_cuadrilla)
-
-    with pesta_tabla:
-        por_cuadrilla_mostrar = por_cuadrilla.copy()
-        por_cuadrilla_mostrar["costo_total"] = (
-            por_cuadrilla_mostrar["costo_total"].round(2)
-        )
-
-        st.dataframe(
-            por_cuadrilla_mostrar,
-            use_container_width=True,
-            hide_index=True,
-        )
-
-        descargar_excel(
-            por_cuadrilla_mostrar,
-            f"produccion_por_cuadrilla_{datetime.now().strftime('%Y%m%d')}.xlsx",
-        )
-
-
-# ============================================================
-# REPORTE 3: MONTO POR CUADRILLA
-# ============================================================
-
-elif reporte_seleccionado == "Monto por cuadrilla":
-
-    monto_cuadrilla = (
-        df_filtrado.groupby("cuadrilla")
-        .agg(
-            monto=("costo_total", "sum"),
-            registros=("cantidad", "size"),
-            cantidad=("cantidad", "sum"),
-        )
-        .reset_index()
-        .sort_values("monto", ascending=False)
-    )
-
-    pesta_grafico, pesta_tabla = st.tabs(["📊 Gráfico", "📋 Tabla"])
-
-    with pesta_grafico:
-        fig_monto = px.bar(
-            monto_cuadrilla,
-            x="cuadrilla",
-            y="monto",
-            color_discrete_sequence=["#d62728"],
-            text=monto_cuadrilla["monto"].apply(etiqueta_costo),
-            custom_data=["monto", "cantidad", "registros"],
-            title="Monto (S/) por cuadrilla",
-        )
-
-        fig_monto.update_traces(
-            hovertemplate=(
-                "Cuadrilla: %{x}<br>"
-                "Monto: S/ %{customdata[0]:,.2f}<br>"
-                "Cantidad producida: %{customdata[1]:,.0f}<br>"
-                "Registros: %{customdata[2]}"
-                "<extra></extra>"
-            ),
-            **estilo_barra_con_costo(monto_cuadrilla["monto"]),
-        )
-
-        fig_monto.update_layout(
-            xaxis_title="Cuadrilla / Técnico",
-            yaxis=dict(title="Monto (S/)"),
-            showlegend=False,
-            height=450,
-            margin=dict(l=10, r=10, t=50, b=10),
-        )
-
-        fijar_visibilidad_texto(fig_monto)
-        mostrar_grafico(fig_monto)
-
-    with pesta_tabla:
-        monto_cuadrilla_mostrar = monto_cuadrilla.copy()
-        monto_cuadrilla_mostrar["monto"] = (
-            monto_cuadrilla_mostrar["monto"].round(2)
-        )
-
-        st.dataframe(
-            monto_cuadrilla_mostrar,
-            use_container_width=True,
-            hide_index=True,
-        )
-
-        descargar_excel(
-            monto_cuadrilla_mostrar,
-            f"monto_por_cuadrilla_{datetime.now().strftime('%Y%m%d')}.xlsx",
-        )
-
-
-# ============================================================
-# REPORTE 4: PRODUCCIÓN POR ZONA
-# ============================================================
-
-elif reporte_seleccionado == "Producción por zona":
-
-    por_zona = (
-        df_filtrado.groupby("zona")
-        .agg(
-            registros=("cantidad", "size"),
-            cantidad=("cantidad", "sum"),
-            costo_total=("costo_total", "sum"),
-        )
-        .reset_index()
-        .sort_values("cantidad", ascending=False)
-    )
-
-    c1, c2 = st.columns([2, 1])
-
-    with c1:
-        fig_zona = px.bar(
-            por_zona,
-            x="zona",
-            y="cantidad",
-            color="zona",
-            color_discrete_map={
-                "UB": "#1f77b4",
-                "UR": "#ff7f0e",
-                "R": "#2ca02c",
-            },
-            text=por_zona["costo_total"].apply(etiqueta_costo),
-            custom_data=["costo_total", "registros"],
-            title="Producción por zona (etiqueta = costo total S/)",
-        )
-
-        fig_zona.update_traces(
-            hovertemplate=(
-                "Zona: %{x}<br>"
-                "Cantidad: %{y:,.0f}<br>"
-                "Costo total: S/ %{customdata[0]:,.2f}<br>"
-                "Registros: %{customdata[1]}"
-                "<extra></extra>"
-            ),
-            **estilo_barra_con_costo(por_zona["cantidad"]),
-        )
-
-        fig_zona.update_layout(
-            showlegend=False,
-            xaxis_title="Zona",
-            yaxis_title="Cantidad",
-            height=400,
-            margin=dict(l=10, r=10, t=50, b=10),
-        )
-
-        fijar_visibilidad_texto(fig_zona)
-        mostrar_grafico(fig_zona)
-
-    with c2:
-        por_zona_mostrar = por_zona.copy()
-        por_zona_mostrar["costo_total"] = (
-            por_zona_mostrar["costo_total"].round(2)
-        )
-
-        st.dataframe(
-            por_zona_mostrar,
-            use_container_width=True,
-            hide_index=True,
-        )
-
-        descargar_excel(
-            por_zona_mostrar,
-            f"produccion_por_zona_{datetime.now().strftime('%Y%m%d')}.xlsx",
-        )
-
-
-# ============================================================
-# REPORTE 5: PRODUCCIÓN POR PROCESO
-# ============================================================
-
-elif reporte_seleccionado == "Producción por proceso":
-
-    por_proceso = (
-        df_filtrado.groupby("proceso")
+    por_dia = (
+        df_grafico_dia
+        .groupby("dia", as_index=False)
         .agg(
             registros=("cantidad", "size"),
             cantidad=("cantidad", "sum"),
             costo_total=("costo_total", "sum"),
             cuadrillas=("cuadrilla", "nunique"),
         )
-        .reset_index()
-        .sort_values("cantidad", ascending=False)
     )
+
+    # Si se elige un mes, se mantiene su calendario completo.
+    # Si se eligen TODOS, se muestran solo los días con registros.
+    # Esto evita generar miles de barras innecesarias.
+    if fecha_filtro is not None:
+        fecha_seleccionada = pd.to_datetime(
+            fecha_filtro,
+            dayfirst=True,
+            errors="coerce",
+        )
+
+        if pd.notna(fecha_seleccionada):
+            calendario_completo = pd.DatetimeIndex(
+                [fecha_seleccionada.normalize()]
+            )
+        else:
+            calendario_completo = pd.DatetimeIndex(
+                por_dia["dia"].sort_values().unique()
+            )
+
+    elif periodo_filtro != "TODOS":
+        texto_periodo = str(periodo_filtro).strip()
+
+        if re.fullmatch(r"\d{6}", texto_periodo):
+            anio = int(texto_periodo[:4])
+            mes = int(texto_periodo[4:6])
+
+            fecha_inicio = pd.Timestamp(anio, mes, 1)
+            ultimo_dia = calendar.monthrange(anio, mes)[1]
+            fecha_fin = pd.Timestamp(anio, mes, ultimo_dia)
+
+            calendario_completo = pd.date_range(
+                start=fecha_inicio,
+                end=fecha_fin,
+                freq="D",
+            )
+        else:
+            calendario_completo = pd.DatetimeIndex(
+                por_dia["dia"].sort_values().unique()
+            )
+    else:
+        calendario_completo = pd.DatetimeIndex(
+            por_dia["dia"].sort_values().unique()
+        )
+
+    por_dia = (
+        por_dia
+        .set_index("dia")
+        .reindex(calendario_completo)
+        .rename_axis("dia")
+        .reset_index()
+    )
+
+    columnas_numericas = [
+        "registros",
+        "cantidad",
+        "costo_total",
+        "cuadrillas",
+    ]
+
+    por_dia[columnas_numericas] = (
+        por_dia[columnas_numericas].fillna(0)
+    )
+
+    por_dia["registros"] = por_dia["registros"].astype(int)
+    por_dia["cuadrillas"] = por_dia["cuadrillas"].astype(int)
+    por_dia = por_dia.sort_values("dia").reset_index(drop=True)
 
     pesta_grafico, pesta_tabla = st.tabs(["📊 Gráfico", "📋 Tabla"])
 
     with pesta_grafico:
-        fig_proceso = px.bar(
-            por_proceso,
-            x="proceso",
-            y="cantidad",
-            color="proceso",
-            text=por_proceso["costo_total"].apply(etiqueta_costo),
-            custom_data=["costo_total", "registros", "cuadrillas"],
-            title="Cantidad producida por proceso (etiqueta = costo total S/)",
+        fig_dia = go.Figure()
+
+        fig_dia.add_trace(
+            go.Bar(
+                x=por_dia["dia"],
+                y=por_dia["cantidad"],
+                name="Cantidad",
+                marker_color="#1f77b4",
+                text=por_dia["costo_total"].apply(etiqueta_costo),
+                customdata=por_dia["costo_total"],
+                hovertemplate=(
+                    "Día: %{x|%d/%m/%Y}<br>"
+                    "Cantidad: %{y:,.0f}<br>"
+                    "Costo total: S/ %{customdata:,.2f}"
+                    "<extra></extra>"
+                ),
+                **estilo_barra_con_costo(por_dia["cantidad"]),
+            )
         )
 
-        fig_proceso.update_traces(
-            hovertemplate=(
-                "Proceso: %{x}<br>"
-                "Cantidad: %{y:,.0f}<br>"
-                "Costo total: S/ %{customdata[0]:,.2f}<br>"
-                "Registros: %{customdata[1]}<br>"
-                "Cuadrillas: %{customdata[2]}"
-                "<extra></extra>"
+        fig_dia.update_layout(
+            title="Producción por día (etiqueta = costo total S/)",
+            xaxis=dict(
+                title="Día",
+                type="date",
+                tickformat="%d/%m",
+                tickangle=-45,
             ),
-            **estilo_barra_con_costo(por_proceso["cantidad"]),
-        )
-
-        fig_proceso.update_layout(
+            yaxis=dict(title="Cantidad"),
             showlegend=False,
-            xaxis_title="Proceso",
-            yaxis_title="Cantidad",
-            height=400,
-            margin=dict(l=10, r=10, t=50, b=10),
+            height=450,
+            margin=dict(l=10, r=10, t=50, b=70),
         )
 
-        fijar_visibilidad_texto(fig_proceso)
-        mostrar_grafico(fig_proceso)
+        fijar_visibilidad_texto(fig_dia)
+        mostrar_grafico(fig_dia)
 
     with pesta_tabla:
-        por_proceso_mostrar = por_proceso.copy()
-        por_proceso_mostrar["costo_total"] = (
-            por_proceso_mostrar["costo_total"].round(2)
+        por_dia_mostrar = por_dia.copy()
+        por_dia_mostrar["dia"] = por_dia_mostrar["dia"].dt.strftime(
+            "%d/%m/%Y"
+        )
+        por_dia_mostrar["costo_total"] = (
+            por_dia_mostrar["costo_total"].round(2)
         )
 
         st.dataframe(
-            por_proceso_mostrar,
+            por_dia_mostrar,
             use_container_width=True,
             hide_index=True,
         )
 
         descargar_excel(
-            por_proceso_mostrar,
-            f"produccion_por_proceso_{datetime.now().strftime('%Y%m%d')}.xlsx",
+            por_dia_mostrar,
+            f"produccion_por_dia_{datetime.now().strftime('%Y%m%d')}.xlsx",
         )
+
+
+# ============================================================
+# REPORTE 2: PRODUCCIÓN POR CUADRILLA
+# ============================================================
+
+st.divider()
+st.subheader("📊 Producción por cuadrilla")
+
+por_cuadrilla = (
+    df_filtrado.groupby("cuadrilla")
+    .agg(
+        registros=("cantidad", "size"),
+        cantidad=("cantidad", "sum"),
+        costo_total=("costo_total", "sum"),
+        dias_trabajados=(
+            "_fecha_dt",
+            lambda x: x.dropna().dt.normalize().nunique(),
+        ),
+    )
+    .reset_index()
+    .sort_values("cantidad", ascending=False)
+)
+
+pesta_grafico, pesta_tabla = st.tabs(["📊 Gráfico", "📋 Tabla"])
+
+with pesta_grafico:
+    fig_cuadrilla = px.bar(
+        por_cuadrilla,
+        x="cuadrilla",
+        y="cantidad",
+        color_discrete_sequence=["#2ca02c"],
+        text=por_cuadrilla["costo_total"].apply(etiqueta_costo),
+        custom_data=["costo_total", "dias_trabajados"],
+        title="Cantidad producida por cuadrilla (etiqueta = costo total S/)",
+    )
+
+    fig_cuadrilla.update_traces(
+        hovertemplate=(
+            "Cuadrilla: %{x}<br>"
+            "Cantidad: %{y:,.0f}<br>"
+            "Costo total: S/ %{customdata[0]:,.2f}<br>"
+            "Días trabajados: %{customdata[1]}"
+            "<extra></extra>"
+        ),
+        **estilo_barra_con_costo(por_cuadrilla["cantidad"]),
+    )
+
+    fig_cuadrilla.update_layout(
+        xaxis_title="Cuadrilla / Técnico",
+        yaxis_title="Cantidad",
+        showlegend=False,
+        height=450,
+        margin=dict(l=10, r=10, t=50, b=10),
+    )
+
+    fijar_visibilidad_texto(fig_cuadrilla)
+    mostrar_grafico(fig_cuadrilla)
+
+with pesta_tabla:
+    por_cuadrilla_mostrar = por_cuadrilla.copy()
+    por_cuadrilla_mostrar["costo_total"] = (
+        por_cuadrilla_mostrar["costo_total"].round(2)
+    )
+
+    st.dataframe(
+        por_cuadrilla_mostrar,
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    descargar_excel(
+        por_cuadrilla_mostrar,
+        f"produccion_por_cuadrilla_{datetime.now().strftime('%Y%m%d')}.xlsx",
+    )
+
+
+# ============================================================
+# REPORTE 3: MONTO POR CUADRILLA
+# ============================================================
+
+st.divider()
+st.subheader("📊 Monto por cuadrilla")
+
+monto_cuadrilla = (
+    df_filtrado.groupby("cuadrilla")
+    .agg(
+        monto=("costo_total", "sum"),
+        registros=("cantidad", "size"),
+        cantidad=("cantidad", "sum"),
+    )
+    .reset_index()
+    .sort_values("monto", ascending=False)
+)
+
+pesta_grafico, pesta_tabla = st.tabs(["📊 Gráfico", "📋 Tabla"])
+
+with pesta_grafico:
+    fig_monto = px.bar(
+        monto_cuadrilla,
+        x="cuadrilla",
+        y="monto",
+        color_discrete_sequence=["#d62728"],
+        text=monto_cuadrilla["monto"].apply(etiqueta_costo),
+        custom_data=["monto", "cantidad", "registros"],
+        title="Monto (S/) por cuadrilla",
+    )
+
+    fig_monto.update_traces(
+        hovertemplate=(
+            "Cuadrilla: %{x}<br>"
+            "Monto: S/ %{customdata[0]:,.2f}<br>"
+            "Cantidad producida: %{customdata[1]:,.0f}<br>"
+            "Registros: %{customdata[2]}"
+            "<extra></extra>"
+        ),
+        **estilo_barra_con_costo(monto_cuadrilla["monto"]),
+    )
+
+    fig_monto.update_layout(
+        xaxis_title="Cuadrilla / Técnico",
+        yaxis=dict(title="Monto (S/)"),
+        showlegend=False,
+        height=450,
+        margin=dict(l=10, r=10, t=50, b=10),
+    )
+
+    fijar_visibilidad_texto(fig_monto)
+    mostrar_grafico(fig_monto)
+
+with pesta_tabla:
+    monto_cuadrilla_mostrar = monto_cuadrilla.copy()
+    monto_cuadrilla_mostrar["monto"] = (
+        monto_cuadrilla_mostrar["monto"].round(2)
+    )
+
+    st.dataframe(
+        monto_cuadrilla_mostrar,
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    descargar_excel(
+        monto_cuadrilla_mostrar,
+        f"monto_por_cuadrilla_{datetime.now().strftime('%Y%m%d')}.xlsx",
+    )
+
+
+# ============================================================
+# REPORTE 4: PRODUCCIÓN POR ZONA
+# ============================================================
+
+st.divider()
+st.subheader("📊 Producción por zona")
+
+por_zona = (
+    df_filtrado.groupby("zona")
+    .agg(
+        registros=("cantidad", "size"),
+        cantidad=("cantidad", "sum"),
+        costo_total=("costo_total", "sum"),
+    )
+    .reset_index()
+    .sort_values("cantidad", ascending=False)
+)
+
+c1, c2 = st.columns([2, 1])
+
+with c1:
+    fig_zona = px.bar(
+        por_zona,
+        x="zona",
+        y="cantidad",
+        color="zona",
+        color_discrete_map={
+            "UB": "#1f77b4",
+            "UR": "#ff7f0e",
+            "R": "#2ca02c",
+        },
+        text=por_zona["costo_total"].apply(etiqueta_costo),
+        custom_data=["costo_total", "registros"],
+        title="Producción por zona (etiqueta = costo total S/)",
+    )
+
+    fig_zona.update_traces(
+        hovertemplate=(
+            "Zona: %{x}<br>"
+            "Cantidad: %{y:,.0f}<br>"
+            "Costo total: S/ %{customdata[0]:,.2f}<br>"
+            "Registros: %{customdata[1]}"
+            "<extra></extra>"
+        ),
+        **estilo_barra_con_costo(por_zona["cantidad"]),
+    )
+
+    fig_zona.update_layout(
+        showlegend=False,
+        xaxis_title="Zona",
+        yaxis_title="Cantidad",
+        height=400,
+        margin=dict(l=10, r=10, t=50, b=10),
+    )
+
+    fijar_visibilidad_texto(fig_zona)
+    mostrar_grafico(fig_zona)
+
+with c2:
+    por_zona_mostrar = por_zona.copy()
+    por_zona_mostrar["costo_total"] = (
+        por_zona_mostrar["costo_total"].round(2)
+    )
+
+    st.dataframe(
+        por_zona_mostrar,
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    descargar_excel(
+        por_zona_mostrar,
+        f"produccion_por_zona_{datetime.now().strftime('%Y%m%d')}.xlsx",
+    )
+
+
+# ============================================================
+# REPORTE 5: PRODUCCIÓN POR PROCESO
+# ============================================================
+
+st.divider()
+st.subheader("📊 Producción por proceso")
+
+por_proceso = (
+    df_filtrado.groupby("proceso")
+    .agg(
+        registros=("cantidad", "size"),
+        cantidad=("cantidad", "sum"),
+        costo_total=("costo_total", "sum"),
+        cuadrillas=("cuadrilla", "nunique"),
+    )
+    .reset_index()
+    .sort_values("cantidad", ascending=False)
+)
+
+pesta_grafico, pesta_tabla = st.tabs(["📊 Gráfico", "📋 Tabla"])
+
+with pesta_grafico:
+    fig_proceso = px.bar(
+        por_proceso,
+        x="proceso",
+        y="cantidad",
+        color="proceso",
+        text=por_proceso["costo_total"].apply(etiqueta_costo),
+        custom_data=["costo_total", "registros", "cuadrillas"],
+        title="Cantidad producida por proceso (etiqueta = costo total S/)",
+    )
+
+    fig_proceso.update_traces(
+        hovertemplate=(
+            "Proceso: %{x}<br>"
+            "Cantidad: %{y:,.0f}<br>"
+            "Costo total: S/ %{customdata[0]:,.2f}<br>"
+            "Registros: %{customdata[1]}<br>"
+            "Cuadrillas: %{customdata[2]}"
+            "<extra></extra>"
+        ),
+        **estilo_barra_con_costo(por_proceso["cantidad"]),
+    )
+
+    fig_proceso.update_layout(
+        showlegend=False,
+        xaxis_title="Proceso",
+        yaxis_title="Cantidad",
+        height=400,
+        margin=dict(l=10, r=10, t=50, b=10),
+    )
+
+    fijar_visibilidad_texto(fig_proceso)
+    mostrar_grafico(fig_proceso)
+
+with pesta_tabla:
+    por_proceso_mostrar = por_proceso.copy()
+    por_proceso_mostrar["costo_total"] = (
+        por_proceso_mostrar["costo_total"].round(2)
+    )
+
+    st.dataframe(
+        por_proceso_mostrar,
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    descargar_excel(
+        por_proceso_mostrar,
+        f"produccion_por_proceso_{datetime.now().strftime('%Y%m%d')}.xlsx",
+    )
 
 
 # ============================================================
 # REPORTE 6: TOP 20 CÓDIGOS DE ACTIVIDAD
 # ============================================================
 
-elif reporte_seleccionado == "Top códigos de actividad":
+st.divider()
+st.subheader("📊 Top códigos de actividad")
 
-    top_codigos = (
-        df_filtrado.groupby(["codigo", "actividad"])
-        .agg(
-            cantidad=("cantidad", "sum"),
-            costo_total=("costo_total", "sum"),
-        )
-        .reset_index()
-        .sort_values("cantidad", ascending=False)
-        .head(20)
+top_codigos = (
+    df_filtrado.groupby(["codigo", "actividad"])
+    .agg(
+        cantidad=("cantidad", "sum"),
+        costo_total=("costo_total", "sum"),
+    )
+    .reset_index()
+    .sort_values("cantidad", ascending=False)
+    .head(20)
+)
+
+pesta_grafico, pesta_tabla = st.tabs(["📊 Gráfico", "📋 Tabla"])
+
+with pesta_grafico:
+    fig_top = px.bar(
+        top_codigos,
+        x="codigo",
+        y="cantidad",
+        color_discrete_sequence=["#9467bd"],
+        text=top_codigos["costo_total"].apply(etiqueta_costo),
+        custom_data=["costo_total", "actividad"],
+        title="Top 20 códigos (etiqueta = costo total S/)",
     )
 
-    pesta_grafico, pesta_tabla = st.tabs(["📊 Gráfico", "📋 Tabla"])
+    fig_top.update_traces(
+        hovertemplate=(
+            "Código: %{x}<br>"
+            "Actividad: %{customdata[1]}<br>"
+            "Cantidad: %{y:,.0f}<br>"
+            "Costo total: S/ %{customdata[0]:,.2f}"
+            "<extra></extra>"
+        ),
+        **estilo_barra_con_costo(top_codigos["cantidad"]),
+    )
 
-    with pesta_grafico:
-        fig_top = px.bar(
-            top_codigos,
-            x="codigo",
-            y="cantidad",
-            color_discrete_sequence=["#9467bd"],
-            text=top_codigos["costo_total"].apply(etiqueta_costo),
-            custom_data=["costo_total", "actividad"],
-            title="Top 20 códigos (etiqueta = costo total S/)",
-        )
+    fig_top.update_layout(
+        xaxis_title="Código",
+        yaxis_title="Cantidad",
+        height=450,
+        margin=dict(l=10, r=10, t=50, b=10),
+    )
 
-        fig_top.update_traces(
-            hovertemplate=(
-                "Código: %{x}<br>"
-                "Actividad: %{customdata[1]}<br>"
-                "Cantidad: %{y:,.0f}<br>"
-                "Costo total: S/ %{customdata[0]:,.2f}"
-                "<extra></extra>"
-            ),
-            **estilo_barra_con_costo(top_codigos["cantidad"]),
-        )
+    fijar_visibilidad_texto(fig_top)
+    mostrar_grafico(fig_top)
 
-        fig_top.update_layout(
-            xaxis_title="Código",
-            yaxis_title="Cantidad",
-            height=450,
-            margin=dict(l=10, r=10, t=50, b=10),
-        )
+with pesta_tabla:
+    top_codigos_mostrar = top_codigos.copy()
+    top_codigos_mostrar["costo_total"] = (
+        top_codigos_mostrar["costo_total"].round(2)
+    )
 
-        fijar_visibilidad_texto(fig_top)
-        mostrar_grafico(fig_top)
+    st.dataframe(
+        top_codigos_mostrar,
+        use_container_width=True,
+        hide_index=True,
+    )
 
-    with pesta_tabla:
-        top_codigos_mostrar = top_codigos.copy()
-        top_codigos_mostrar["costo_total"] = (
-            top_codigos_mostrar["costo_total"].round(2)
-        )
-
-        st.dataframe(
-            top_codigos_mostrar,
-            use_container_width=True,
-            hide_index=True,
-        )
-
-        descargar_excel(
-            top_codigos_mostrar,
-            f"top_codigos_{datetime.now().strftime('%Y%m%d')}.xlsx",
-        )
+    descargar_excel(
+        top_codigos_mostrar,
+        f"top_codigos_{datetime.now().strftime('%Y%m%d')}.xlsx",
+    )
 
 
 # ============================================================
 # REPORTE 7: RESUMEN CUADRILLA POR DÍA
 # ============================================================
 
-elif reporte_seleccionado == "Resumen cuadrilla por día":
+st.divider()
+st.subheader("📊 Resumen cuadrilla por día")
 
-    df_pivote = df_filtrado.dropna(subset=["_fecha_dt"]).copy()
+df_pivote = df_filtrado.dropna(subset=["_fecha_dt"]).copy()
 
-    if df_pivote.empty:
-        st.warning("No hay fechas válidas para generar el resumen.")
-    else:
-        df_pivote["dia"] = df_pivote["_fecha_dt"].dt.strftime("%d/%m/%Y")
+if df_pivote.empty:
+    st.warning("No hay fechas válidas para generar el resumen.")
+else:
+    df_pivote["dia"] = df_pivote["_fecha_dt"].dt.strftime("%d/%m/%Y")
 
-        pivote_cantidad = df_pivote.pivot_table(
-            index="cuadrilla",
-            columns="dia",
-            values="cantidad",
-            aggfunc="sum",
-            fill_value=0,
-        )
+    pivote_cantidad = df_pivote.pivot_table(
+        index="cuadrilla",
+        columns="dia",
+        values="cantidad",
+        aggfunc="sum",
+        fill_value=0,
+    )
 
-        st.dataframe(
-            pivote_cantidad,
-            use_container_width=True,
-            height=350,
-        )
+    st.dataframe(
+        pivote_cantidad,
+        use_container_width=True,
+        height=350,
+    )
 
-        descargar_excel(
-            pivote_cantidad.reset_index(),
-            f"resumen_cuadrilla_dia_{datetime.now().strftime('%Y%m%d')}.xlsx",
-        )
+    descargar_excel(
+        pivote_cantidad.reset_index(),
+        f"resumen_cuadrilla_dia_{datetime.now().strftime('%Y%m%d')}.xlsx",
+    )
 
 
 # ============================================================
 # REPORTE 8: DETALLE COMPLETO
 # ============================================================
 
-elif reporte_seleccionado == "Detalle de registros":
+st.divider()
+st.subheader("📊 Detalle de registros")
 
-    st.dataframe(
-        df_filtrado,
-        use_container_width=True,
-        height=400,
-        hide_index=True,
-    )
+st.dataframe(
+    df_filtrado,
+    use_container_width=True,
+    height=400,
+    hide_index=True,
+)
 
-    descargar_excel(
-        df_filtrado,
-        f"detalle_produccion_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
-    )
+descargar_excel(
+    df_filtrado,
+    f"detalle_produccion_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+)
 
 
 # ============================================================
