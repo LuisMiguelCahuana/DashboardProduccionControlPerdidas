@@ -74,12 +74,12 @@ COLUMNAS = [
     "archivo_origen",
 ]
 
-# Estilo de las etiquetas de costo. Solo propiedades válidas
-# de textfont (size, color, family): bgcolor/borderpad no
-# existen en barras y generan ValueError en Plotly 6+.
+# Estilo de las etiquetas de costo. Solo propiedades válidas de
+# textfont (size, color, family, weight).
 ESTILO_ETIQUETA_COSTO = dict(
-    size=13,
+    size=14,
     color="#111111",
+    family="Arial Black, Arial, sans-serif",
 )
 
 
@@ -249,28 +249,46 @@ def descargar_excel(df, nombre):
 
 
 def estilo_barra_con_costo():
-    """Configuración común para que el costo sea siempre visible.
+    """Configuración común para que el costo sea SIEMPRE visible.
 
-    - textposition="inside" + insidetextanchor="middle":
-      la etiqueta queda al CENTRO de cada columna.
-    - uniformtext: mantiene el tamaño de letra y evita que
-      las etiquetas se oculten o solapen al hacer zoom o en
-      pantallas pequeñas.
+    - textposition="outside": la etiqueta va ARRIBA de cada
+      columna, no dentro. Así se muestra completa aunque la
+      columna sea muy pequeña (1, 5, 10 de altura).
+    - Con esto TODOS los costos se ven siempre: los de las
+      columnas grandes quedan pegados a la parte superior de
+      la columna y los de las columnas pequeñas quedan
+      igualmente legibles sobre ellas.
     """
     return dict(
-        textposition="inside",
-        insidetextanchor="middle",
+        textposition="outside",
         textfont=ESTILO_ETIQUETA_COSTO,
         cliponaxis=False,
     )
 
 
 def fijar_visibilidad_texto(fig):
-    """Garantiza que las etiquetas nunca se oculten."""
+    """Garantiza que las etiquetas nunca se oculten ni se corten.
+
+    - Espacio extra arriba para que las etiquetas "outside"
+      quepan completas sin recortarse.
+    - El eje Y arranca en 0 y crece según los datos.
+    """
     fig.update_layout(
-        uniformtext=dict(
-            minsize=11,
-            mode="hide",
+        margin=dict(t=90, r=30),
+        yaxis=dict(
+            rangemode="tozero",
+            # 15% de holgura para la etiqueta de la columna más alta.
+            range=[
+                0,
+                None
+                if not fig.data
+                else max(
+                    (max(trace.y) if len(trace.y) else 0)
+                    * 1.15
+                    for trace in fig.data
+                    if trace.y is not None
+                ),
+            ],
         ),
     )
     return fig
