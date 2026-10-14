@@ -231,23 +231,23 @@ def fijar_visibilidad_texto(fig):
 
 ALTO_GRAFICO = 450
 
-
 def mostrar_grafico(fig):
     """
-    Mantiene una presentación estable de los gráficos Plotly
-    al seleccionar pestañas, filtros o cambiar el tamaño
-    de la ventana del navegador.
+    Evita que la selección de columnas altere
+    la apariencia de los gráficos.
     """
 
-    # Mantener una altura uniforme.
     fig.update_layout(
-        height=ALTO_GRAFICO,
+        height=450,
         autosize=True,
+        dragmode=False,
+        clickmode="none",
+        uirevision="grafico_estable",
         margin=dict(
             l=60,
-            r=30,
+            r=40,
             t=65,
-            b=80,
+            b=100,
         ),
         font=dict(
             family="Arial, sans-serif",
@@ -255,14 +255,14 @@ def mostrar_grafico(fig):
         ),
     )
 
-    # Permitir que las etiquetas largas se visualicen
-    # sin modificar la escala de los datos.
     fig.update_xaxes(
         automargin=True,
+        fixedrange=True,
     )
 
     fig.update_yaxes(
         automargin=True,
+        fixedrange=True,
     )
 
     st.plotly_chart(
@@ -274,13 +274,14 @@ def mostrar_grafico(fig):
             "displaylogo": False,
             "scrollZoom": False,
             "modeBarButtonsToRemove": [
+                "select2d",
+                "lasso2d",
                 "toggleSpikelines",
                 "hoverClosestCartesian",
                 "hoverCompareCartesian",
             ],
         },
     )
-
 # ============================================================
 # CARGA DE DATOS
 # ============================================================
@@ -529,8 +530,6 @@ with pesta_grafico:
         xaxis_title="Cuadrilla / Técnico",
         yaxis_title="Cantidad",
         showlegend=False,
-        height=450,
-        margin=dict(l=10, r=10, t=50, b=10),
     )
 
     fijar_visibilidad_texto(fig_cuadrilla)
@@ -600,8 +599,6 @@ with pesta_grafico:
         xaxis_title="Cuadrilla / Técnico",
         yaxis=dict(title="Monto (S/)"),
         showlegend=False,
-        height=450,
-        margin=dict(l=10, r=10, t=50, b=10),
     )
 
     fijar_visibilidad_texto(fig_monto)
@@ -676,7 +673,7 @@ with c1:
         showlegend=False,
         xaxis_title="Zona",
         yaxis_title="Cantidad",
-        height=400,
+        
         margin=dict(l=10, r=10, t=50, b=10),
     )
 
@@ -749,7 +746,7 @@ with pesta_grafico:
         showlegend=False,
         xaxis_title="Proceso",
         yaxis_title="Cantidad",
-        height=400,
+        
         margin=dict(l=10, r=10, t=50, b=10),
     )
 
@@ -819,8 +816,6 @@ with pesta_grafico:
     fig_top.update_layout(
         xaxis_title="Código",
         yaxis_title="Cantidad",
-        height=450,
-        margin=dict(l=10, r=10, t=50, b=10),
     )
 
     fijar_visibilidad_texto(fig_top)
@@ -888,7 +883,6 @@ st.subheader("📊 Detalle de registros")
 st.dataframe(
     df_filtrado,
     use_container_width=True,
-    height=400,
     hide_index=True,
 )
 
