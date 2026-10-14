@@ -121,15 +121,41 @@ def cargar_datos():
 
     # Normalizar tipos.
     if "fecha" in df.columns:
-        df["fecha"] = pd.to_datetime(
-            df["fecha"],
-            dayfirst=False,
-            errors="coerce",
-        )
+        # La fecha puede llegar como TEXTO ("2026-10-08") o como
+        # NÚMERO DE SERIE de Excel (46268 = 08/10/2026).
+        serie = pd.to_numeric(df["fecha"], errors="coerce")
+
+        # Números de serie de Excel (origin 1899-12-30).
+        if serie.notna().any():
+            df["fecha"] = pd.to_datetime(
+                serie,
+                unit="D",
+                origin="1899-12-30",
+                errors="coerce",
+            )
+
+        # Texto de fecha normal: "2026-10-08", "08/10/2026", etc.
+        else:
+            df["fecha"] = pd.to_datetime(
+                df["fecha"],
+                dayfirst=True,
+                errors="coerce",
+            )
 
     for col in ["cantidad", "costo_unitario", "costo_total"]:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    # Asegurar que el costo total esté siempre calculado:
+    # si falta o es 0, se recalcula como cantidad * costo_unitario.
+    if "costo_total" in df.columns and "costo_unitario" in df.columns:
+        costo_recalculado = (
+            pd.to_numeric(df["cantidad"], errors="coerce")
+            * pd.to_numeric(df["costo_unitario"], errors="coerce")
+        )
+
+        df["costo_total"] = df["costo_total"].fillna(0)
+        df.loc[df["costo_total"] == 0, "costo_total"] = costo_recalculado
 
     # Filtrar filas totalmente vacías.
     df = df.dropna(how="all").reset_index(drop=True)
