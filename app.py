@@ -1,4 +1,3 @@
-
 import io
 import re
 import unicodedata
@@ -16,10 +15,10 @@ from google.oauth2.service_account import Credentials
 # ============================================================
 
 st.set_page_config(
-    page_title="Dashboards de Producción y Costos",
+    page_title="Dashboard de Producción y Costos",
     page_icon="📊",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",
 )
 
 SPREADSHEET_ID = "1gNq2nuNGfogcgcq7gsIqmQ5BZmMuWiSgAbDLpytJTIY"
@@ -44,6 +43,10 @@ COLUMNAS = [
     "hoja_origen",
     "archivo_origen",
 ]
+
+# Colores de la cabecera (estilo del dashboard de referencia)
+AZUL = "#1F4E79"
+ROJO = "#C00000"
 
 
 # ============================================================
@@ -117,8 +120,6 @@ def convertir_fecha(valor):
     if pd.notna(resultado):
         return pd.Timestamp(resultado).normalize()
 
-    # Para rangos expresados como fecha inicial al fecha final,
-    # se toma la fecha inicial como referencia del reporte.
     coincidencias = re.findall(
         r"\d{1,2}[/-]\d{1,2}[/-]\d{4}",
         texto
@@ -134,8 +135,6 @@ def convertir_fecha(valor):
         if pd.notna(resultado):
             return pd.Timestamp(resultado).normalize()
 
-    # Los periodos o listas de días que no sean fechas reales
-    # no se convierten en fechas inventadas.
     return pd.NaT
 
 
@@ -189,14 +188,12 @@ def cargar_datos():
         columns=encabezados
     )
 
-    # Completar columnas faltantes sin modificar la hoja original.
     for columna in COLUMNAS:
         if columna not in df.columns:
             df[columna] = ""
 
     df = df[COLUMNAS].copy()
 
-    # No reemplazar cuadrillas vacías por ningún texto.
     columnas_texto = [
         "suministro",
         "cuadrilla",
@@ -231,8 +228,6 @@ def cargar_datos():
     ]:
         df[columna] = df[columna].apply(convertir_numero)
 
-    # Calcular el costo solo cuando falta y hay cantidad
-    # y costo unitario disponibles.
     calcular = (
         df["costo_total"].isna()
         & df["cantidad"].notna()
@@ -298,95 +293,41 @@ def boton_excel(df, nombre_archivo, nombre_hoja="Reporte"):
 
 
 # ============================================================
-# APLICAR FILTROS
+# ENCABEZADO ESTILO DASHBOARD (SIN BARRA LATERAL)
 # ============================================================
 
-def filtrar_datos(
-    df,
-    rango_fechas,
-    procesos,
-    cuadrillas,
-    zonas
-):
-    resultado = df.copy()
-
-    if (
-        isinstance(rango_fechas, (tuple, list))
-        and len(rango_fechas) == 2
-    ):
-        inicio = pd.Timestamp(rango_fechas[0])
-        fin = pd.Timestamp(rango_fechas[1])
-
-        resultado = resultado[
-            resultado["fecha"].notna()
-            & (resultado["fecha"] >= inicio)
-            & (resultado["fecha"] <= fin)
-        ]
-
-    elif isinstance(rango_fechas, (date, datetime, pd.Timestamp)):
-        inicio = pd.Timestamp(rango_fechas).normalize()
-
-        resultado = resultado[
-            resultado["fecha"].notna()
-            & (resultado["fecha"] == inicio)
-        ]
-
-    if procesos:
-        resultado = resultado[
-            resultado["proceso"].isin(procesos)
-        ]
-
-    # Sin selección de cuadrillas: mostrar todas, incluidas
-    # las filas cuya cuadrilla está vacía.
-    if cuadrillas:
-        resultado = resultado[
-            resultado["cuadrilla"].isin(cuadrillas)
-        ]
-
-    if zonas:
-        resultado = resultado[
-            resultado["zona"].isin(zonas)
-        ]
-
-    return resultado
-
-
-# ============================================================
-# ENCABEZADO
-# ============================================================
-
-st.title("📊 DASHBOARDS DE PRODUCCIÓN Y COSTOS")
-
-st.caption(
-    "Fuente: Google Sheets · CONSOLIDADO_GENERAL"
+st.markdown(
+    f"""
+    <div style="
+        background-color: {AZUL};
+        color: white;
+        padding: 18px 24px;
+        border-radius: 10px;
+        margin-bottom: 10px;
+    ">
+        <h1 style="margin:0; font-size:26px;">
+            📊 DASHBOARD DE PRODUCCIÓN Y COSTOS
+        </h1>
+        <p style="margin:4px 0 0 0; font-size:13px; opacity:0.9;">
+            Fuente: Google Sheets · CONSOLIDADO_GENERAL · Solo lectura
+        </p>
+    </div>
+    """,
+    unsafe_allow_html=True,
 )
 
-st.write(
-    "Consulta la producción, los costos y el rendimiento de las "
-    "cuadrillas. Esta aplicación es independiente del programa "
-    "que consolida los archivos Excel y no modifica los datos."
+# Ocultar por completo la barra lateral de Streamlit
+st.markdown(
+    """
+    <style>
+        [data-testid="stSidebar"] { display: none; }
+        [data-testid="stSidebarCollapseButton"] { display: none; }
+        section[data-testid="stSidebarCollapsedControl"] { display: none; }
+        .block-container { padding-top: 1rem; }
+    </style>
+    """,
+    unsafe_allow_html=True,
 )
-
-col1, col2 = st.columns([1, 2])
-
-with col1:
-    if st.button(
-        "🔄 ACTUALIZAR DATOS",
-        use_container_width=True
-    ):
-        cargar_datos.clear()
-        st.rerun()
-
-with col2:
-    st.link_button(
-        "☁️ ABRIR GOOGLE SHEETS",
-        (
-            "https://docs.google.com/spreadsheets/d/"
-            + SPREADSHEET_ID
-            + "/edit"
-        ),
-        use_container_width=True
-    )
 
 
 # ============================================================
@@ -414,40 +355,48 @@ df_con_fecha = df_original[
 
 if df_con_fecha.empty:
     st.warning(
-        "No hay fechas reconocibles para generar los gráficos. "
-        "Los periodos y listas de días guardados como texto "
-        "se conservan en Google Sheets, pero no se interpretan "
-        "automáticamente como fechas."
+        "No hay fechas reconocibles para generar los gráficos."
     )
     st.stop()
 
 
 # ============================================================
-# FILTROS LATERALES
+# FILTROS EN LA PARTE SUPERIOR (EN LUGAR DEL SIDEBAR)
 # ============================================================
 
-st.sidebar.title("🔎 FILTROS")
+st.markdown("#### 🔎 Filtros de consulta")
 
-fecha_min = df_con_fecha["fecha"].min().date()
-fecha_max = df_con_fecha["fecha"].max().date()
-
-rango_fechas = st.sidebar.date_input(
-    "Periodo de consulta",
-    value=(fecha_min, fecha_max),
-    min_value=fecha_min,
-    max_value=fecha_max,
-    format="DD/MM/YYYY",
+f_col1, f_col2, f_col3, f_col4, f_col5 = st.columns(
+    [1, 1, 1, 1, 1]
 )
+
+with f_col1:
+    anios = sorted(
+        df_con_fecha["fecha"].dt.year.unique(),
+        reverse=True,
+    )
+    anio_sel = st.selectbox(
+        "AÑO",
+        anios,
+        index=0,
+    )
+
+df_anio = df_con_fecha[
+    df_con_fecha["fecha"].dt.year == anio_sel
+].copy()
+
+if df_anio.empty:
+    st.warning(
+        "No hay registros para el año seleccionado."
+    )
+    st.stop()
+
+fecha_min = df_anio["fecha"].min().date()
+fecha_max = df_anio["fecha"].max().date()
 
 procesos_disponibles = sorted(
     x for x in df_original["proceso"].unique()
     if str(x).strip()
-)
-
-procesos_sel = st.sidebar.multiselect(
-    "Proceso",
-    options=procesos_disponibles,
-    default=procesos_disponibles,
 )
 
 cuadrillas_disponibles = sorted(
@@ -455,29 +404,112 @@ cuadrillas_disponibles = sorted(
     if str(x).strip()
 )
 
-cuadrillas_sel = st.sidebar.multiselect(
-    "Cuadrilla",
-    options=cuadrillas_disponibles,
-    default=[],
-    help=(
-        "Si no seleccionas ninguna, se mostrarán todas las cuadrillas "
-        "y también los registros que tengan este campo vacío."
-    ),
-)
-
 zonas_disponibles = sorted(
     x for x in df_original["zona"].unique()
     if str(x).strip()
 )
 
-zonas_sel = st.sidebar.multiselect(
-    "Zona",
-    options=zonas_disponibles,
-    default=zonas_disponibles,
+with f_col2:
+    rango_fechas = st.date_input(
+        "PERIODO",
+        value=(fecha_min, fecha_max),
+        min_value=fecha_min,
+        max_value=fecha_max,
+        format="DD/MM/YYYY",
+    )
+
+with f_col3:
+    procesos_sel = st.multiselect(
+        "PROCESO",
+        options=procesos_disponibles,
+        default=procesos_disponibles,
+    )
+
+with f_col4:
+    cuadrillas_sel = st.multiselect(
+        "CUADRILLA",
+        options=cuadrillas_disponibles,
+        default=[],
+        help=(
+            "Sin selección se muestran todas las cuadrillas "
+            "y los registros con el campo vacío."
+        ),
+    )
+
+with f_col5:
+    zonas_sel = st.multiselect(
+        "ZONA",
+        options=zonas_disponibles,
+        default=zonas_disponibles,
+    )
+
+col_refrescar, col_sheets, _ = st.columns(
+    [1, 1, 3]
 )
 
+with col_refrescar:
+    if st.button("🔄 ACTUALIZAR DATOS"):
+        cargar_datos.clear()
+        st.rerun()
+
+with col_sheets:
+    st.link_button(
+        "☁️ ABRIR GOOGLE SHEETS",
+        (
+            "https://docs.google.com/spreadsheets/d/"
+            + SPREADSHEET_ID
+            + "/edit"
+        ),
+        use_container_width=True,
+    )
+
+
+# ============================================================
+# APLICAR FILTROS
+# ============================================================
+
+def filtrar_datos(
+    df,
+    rango_fechas,
+    procesos,
+    cuadrillas,
+    zonas
+):
+    resultado = df.copy()
+
+    if (
+        isinstance(rango_fechas, (tuple, list))
+        and len(rango_fechas) == 2
+    ):
+        inicio = pd.Timestamp(rango_fechas[0])
+        fin = pd.Timestamp(rango_fechas[1])
+
+        resultado = resultado[
+            resultado["fecha"].notna()
+            & (resultado["fecha"] >= inicio)
+            & (resultado["fecha"] <= fin)
+        ]
+
+    if procesos:
+        resultado = resultado[
+            resultado["proceso"].isin(procesos)
+        ]
+
+    if cuadrillas:
+        resultado = resultado[
+            resultado["cuadrilla"].isin(cuadrillas)
+        ]
+
+    if zonas:
+        resultado = resultado[
+            resultado["zona"].isin(zonas)
+        ]
+
+    return resultado
+
+
 df = filtrar_datos(
-    df_original,
+    df_anio,
     rango_fechas,
     procesos_sel,
     cuadrillas_sel,
@@ -492,45 +524,114 @@ if df.empty:
 
 
 # ============================================================
-# INDICADORES GENERALES
+# PANEL PRINCIPAL (KPIs + GAUGE DE AVANCE)
 # ============================================================
 
 produccion_total = df["cantidad"].sum(skipna=True)
 costo_total = df["costo_total"].sum(skipna=True)
-
 cuadrillas_activas = df.loc[
     df["cuadrilla"].str.strip() != "",
     "cuadrilla"
 ].nunique()
-
 registros_sin_costo = int(
     df["costo_unitario"].isna().sum()
 )
-
-k1, k2, k3, k4 = st.columns(4)
-
-k1.metric(
-    "Producción total",
-    formato_numero(produccion_total)
+dias_con_registros = int(
+    df["fecha"].nunique()
 )
 
-k2.metric(
-    "Costo total",
-    f"S/ {formato_numero(costo_total)}"
+# Ponderador simple de avance: producción lograda en los días
+# con registros frente al mejor día observado (referencia).
+if dias_con_registros:
+    diario = df.groupby("fecha")["cantidad"].sum()
+    mejor_dia = diario.max()
+    avance_pct = (
+        diario.mean() / mejor_dia * 100
+        if mejor_dia
+        else 0.0
+    )
+else:
+    avance_pct = 0.0
+
+panel_izq, panel_centro, panel_der = st.columns(
+    [1, 2, 2]
 )
 
-k3.metric(
-    "Cuadrillas con registros",
-    f"{cuadrillas_activas:,}"
-)
+with panel_izq:
+    st.markdown("##### PORCENTAJE DE AVANCE")
 
-k4.metric(
-    "Registros sin costo unitario",
-    f"{registros_sin_costo:,}"
-)
+    st.markdown(
+        f"""
+        <div style="
+            text-align:center;
+            border: 3px solid {ROJO};
+            border-radius: 120px;
+            width: 180px;
+            height: 180px;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+        ">
+            <span style="
+                font-size: 30px;
+                font-weight: bold;
+                color: {ROJO};
+            ">
+                {avance_pct:,.2f}%
+            </span>
+            <span style="font-size:12px; color:#555;">
+                promedio vs mejor día
+            </span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+with panel_centro:
+    st.markdown("##### INDICADORES GENERALES")
+
+    k1, k2 = st.columns(2)
+
+    k1.metric(
+        "Cuadrillas con registros",
+        f"{cuadrillas_activas:,}"
+    )
+
+    k2.metric(
+        "Valorización total",
+        f"S/ {formato_numero(costo_total)}"
+    )
+
+    k3, k4 = st.columns(2)
+
+    k3.metric(
+        "Producción total",
+        formato_numero(produccion_total)
+    )
+
+    k4.metric(
+        "Días con registros",
+        f"{dias_con_registros:,}"
+    )
+
+with panel_der:
+    st.markdown("##### 💰 MONTO POR PROCESO")
+
+    costos = (
+        df.groupby("proceso", as_index=False)
+        .agg(costo_total=("costo_total", "sum"))
+        .sort_values("costo_total", ascending=False)
+        .set_index("proceso")
+    )
+
+    if not costos.empty:
+        st.bar_chart(costos)
 
 st.caption(
     f"Registros consultados: {len(df):,}. "
+    f"Registros sin costo unitario: {registros_sin_costo:,}. "
     "Las filas con cuadrilla vacía se conservan en los totales."
 )
 
@@ -538,29 +639,25 @@ st.divider()
 
 
 # ============================================================
-# MENÚ DE DASHBOARDS
+# NAVEGACIÓN POR PESTAÑAS (EN LUGAR DEL MENÚ LATERAL)
 # ============================================================
 
-opcion = st.sidebar.radio(
-    "📈 DASHBOARDS Y REPORTES",
-    [
-        "Producción diaria por cuadrilla",
-        "Producción mensual",
-        "Ranking de cuadrillas",
-        "Costos por proceso",
-        "Producción por zona",
-        "Comparación entre cuadrillas",
-    ],
-)
+tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    "📅 Producción diaria",
+    "🗓️ Producción mensual",
+    "🏆 Ranking de cuadrillas",
+    "📍 Producción por zona",
+    "⚖️ Comparación de cuadrillas",
+])
 
 
 # ============================================================
 # 1. PRODUCCIÓN DIARIA POR CUADRILLA
 # ============================================================
 
-if opcion == "Producción diaria por cuadrilla":
+with tab1:
 
-    st.header("📅 Producción diaria por cuadrilla")
+    st.subheader("📅 Producción diaria por cuadrilla")
 
     datos = df[df["fecha"].notna()].copy()
 
@@ -578,26 +675,38 @@ if opcion == "Producción diaria por cuadrilla":
         .sort_values("fecha")
     )
 
-    # El gráfico muestra solo cuadrillas identificadas.
-    # La tabla conserva también los nombres vacíos.
     diario_grafico = diario[
         diario["cuadrilla"].str.strip() != ""
     ]
 
-    if not diario_grafico.empty:
-        grafico = diario_grafico.pivot_table(
-            index="fecha",
-            columns="cuadrilla",
-            values="produccion",
-            aggfunc="sum",
-            fill_value=0,
+    c1, c2 = st.columns(2)
+
+    with c1:
+        if not diario_grafico.empty:
+            pivote = diario_grafico.pivot_table(
+                index="fecha",
+                columns="cuadrilla",
+                values="produccion",
+                aggfunc="sum",
+                fill_value=0,
+            )
+
+            st.markdown("**MONTO / PRODUCCIÓN POR CUADRILLA**")
+            st.bar_chart(pivote)
+
+    with c2:
+        monto_dia = (
+            datos.groupby("fecha", as_index=False)
+            .agg(costo_total=("costo_total", "sum"))
+            .set_index("fecha")
         )
 
-        st.subheader("Evolución diaria")
-        st.line_chart(grafico)
+        st.markdown("**MONTO POR DÍA**")
+        st.bar_chart(monto_dia)
 
-        st.subheader("Comparación de producción diaria")
-        st.bar_chart(grafico)
+    if not diario_grafico.empty:
+        st.subheader("Evolución diaria")
+        st.line_chart(pivote)
 
     st.subheader("Detalle por fecha y cuadrilla")
 
@@ -621,9 +730,9 @@ if opcion == "Producción diaria por cuadrilla":
 # 2. PRODUCCIÓN MENSUAL
 # ============================================================
 
-elif opcion == "Producción mensual":
+with tab2:
 
-    st.header("🗓️ Producción mensual")
+    st.subheader("🗓️ Producción mensual")
 
     datos = df[df["fecha"].notna()].copy()
 
@@ -650,13 +759,13 @@ elif opcion == "Producción mensual":
     col1, col2 = st.columns(2)
 
     with col1:
-        st.subheader("Producción por mes")
+        st.markdown("**Producción por mes**")
         st.bar_chart(
             mensual.set_index("mes")[["produccion"]]
         )
 
     with col2:
-        st.subheader("Costo por mes")
+        st.markdown("**Costo por mes**")
         st.bar_chart(
             mensual.set_index("mes")[["costo_total"]]
         )
@@ -685,15 +794,9 @@ elif opcion == "Producción mensual":
 # 3. RANKING DE CUADRILLAS
 # ============================================================
 
-elif opcion == "Ranking de cuadrillas":
+with tab3:
 
-    st.header("🏆 Ranking de cuadrillas")
-
-    st.write(
-        "Orden de mayor a menor producción. "
-        "Los registros sin nombre de cuadrilla no se incluyen "
-        "en el ranking, pero sí en los indicadores generales."
-    )
+    st.subheader("🏆 Ranking de cuadrillas")
 
     datos = df[
         df["cuadrilla"].str.strip() != ""
@@ -734,19 +837,21 @@ elif opcion == "Ranking de cuadrillas":
         else:
             ranking["participacion_pct"] = 0.0
 
-        st.subheader("Producción por cuadrilla")
+        col1, col2 = st.columns([2, 1])
 
-        st.bar_chart(
-            ranking.set_index("cuadrilla")[["produccion"]]
-        )
+        with col1:
+            st.markdown("**MONTO / PRODUCCIÓN POR CUADRILLA**")
+            st.bar_chart(
+                ranking.set_index("cuadrilla")[["produccion"]]
+            )
 
-        st.subheader("Tabla de posiciones")
-
-        st.dataframe(
-            ranking,
-            use_container_width=True,
-            hide_index=True
-        )
+        with col2:
+            st.markdown("**Tabla de posiciones**")
+            st.dataframe(
+                ranking,
+                use_container_width=True,
+                hide_index=True
+            )
 
         boton_excel(
             ranking,
@@ -756,72 +861,12 @@ elif opcion == "Ranking de cuadrillas":
 
 
 # ============================================================
-# 4. COSTOS POR PROCESO
+# 4. PRODUCCIÓN POR ZONA
 # ============================================================
 
-elif opcion == "Costos por proceso":
+with tab4:
 
-    st.header("💰 Costos por proceso")
-
-    costos = (
-        df.groupby("proceso", dropna=False, as_index=False)
-        .agg(
-            produccion=("cantidad", "sum"),
-            costo_total=("costo_total", "sum"),
-            registros=("cantidad", "size"),
-            registros_sin_costo=(
-                "costo_unitario",
-                lambda x: int(x.isna().sum())
-            ),
-        )
-        .sort_values(
-            "costo_total",
-            ascending=False
-        )
-    )
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-        st.subheader("Costo total por proceso")
-        st.bar_chart(
-            costos.set_index("proceso")[["costo_total"]]
-        )
-
-    with col2:
-        st.subheader("Producción por proceso")
-        st.bar_chart(
-            costos.set_index("proceso")[["produccion"]]
-        )
-
-    st.subheader("Detalle de costos")
-
-    st.dataframe(
-        costos,
-        use_container_width=True,
-        hide_index=True
-    )
-
-    boton_excel(
-        costos,
-        "costos_por_proceso.xlsx",
-        "Costos proceso"
-    )
-
-
-# ============================================================
-# 5. PRODUCCIÓN POR ZONA
-# ============================================================
-
-elif opcion == "Producción por zona":
-
-    st.header("📍 Producción por zona")
-
-    st.write(
-        "Distribución de producción y costos para las zonas "
-        "UB (urbano), UR (urbano-rural) y R (rural), "
-        "según los códigos registrados en el consolidado."
-    )
+    st.subheader("📍 Producción por zona")
 
     zonas = (
         df.groupby("zona", dropna=False, as_index=False)
@@ -839,13 +884,13 @@ elif opcion == "Producción por zona":
     col1, col2 = st.columns(2)
 
     with col1:
-        st.subheader("Producción por zona")
+        st.markdown("**Producción por zona**")
         st.bar_chart(
             zonas.set_index("zona")[["produccion"]]
         )
 
     with col2:
-        st.subheader("Costo por zona")
+        st.markdown("**Costo por zona**")
         st.bar_chart(
             zonas.set_index("zona")[["costo_total"]]
         )
@@ -866,17 +911,12 @@ elif opcion == "Producción por zona":
 
 
 # ============================================================
-# 6. COMPARACIÓN ENTRE CUADRILLAS
+# 5. COMPARACIÓN ENTRE CUADRILLAS
 # ============================================================
 
-elif opcion == "Comparación entre cuadrillas":
+with tab5:
 
-    st.header("⚖️ Comparación entre cuadrillas")
-
-    st.write(
-        "Selecciona dos cuadrillas para comparar producción, "
-        "costos y evolución diaria."
-    )
+    st.subheader("⚖️ Comparación entre cuadrillas")
 
     disponibles = sorted(
         x for x in df["cuadrilla"].unique()
@@ -972,8 +1012,7 @@ elif opcion == "Comparación entre cuadrillas":
                 )
             )
 
-        st.subheader("Comparación de producción")
-
+        st.markdown("**Comparación de producción**")
         st.bar_chart(
             resumen.set_index("cuadrilla")[["produccion"]]
         )
@@ -1024,7 +1063,7 @@ elif opcion == "Comparación entre cuadrillas":
 st.divider()
 
 st.caption(
-    "Dashboards de Producción y Costos | "
+    "Dashboard de Producción y Costos | "
     "Fuente de solo lectura: CONSOLIDADO_GENERAL | "
-    "Las cuadrillas vacías no se reemplazan por SIN CUADRILLA."
+    "Navegación por pestañas, sin menú lateral."
 )
