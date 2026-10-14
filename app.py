@@ -459,14 +459,17 @@ st.divider()
 
 st.header("📅 1. Producción por día")
 
-# Utilizar exclusivamente los registros que ya pasaron
-# los filtros de periodo, fecha, proceso, zona y cuadrilla.
+# Utilizar los registros que ya pasaron los filtros.
 df_grafico_dia = df_filtrado.dropna(subset=["fecha"]).copy()
 
-# Agrupar por fecha, sin duplicar días.
+# Normalizar las fechas para agrupar por día.
+df_grafico_dia["dia"] = (
+    df_grafico_dia["fecha"].dt.normalize()
+)
+
+# Agrupar los registros existentes por día.
 por_dia = (
     df_grafico_dia
-    .assign(dia=df_grafico_dia["fecha"].dt.normalize())
     .groupby("dia", as_index=False)
     .agg(
         registros=("cantidad", "size"),
@@ -474,10 +477,78 @@ por_dia = (
         costo_total=("costo_total", "sum"),
         cuadrillas=("cuadrilla", "nunique"),
     )
-    .sort_values("dia")
 )
 
+# ------------------------------------------------------------
+# GENERAR TODOS LOS DÍAS DEL PERIODO O PERIODOS SELECCIONADOS
+# ------------------------------------------------------------
 
+# Si se selecciona un periodo específico, usar todo su mes.
+if periodo_filtro != "TODOS":
+    texto_periodo = str(periodo_filtro).strip()
+
+    if re.fullmatch(r"\d{6}", texto_periodo):
+        anio = int(texto_periodo[:4])
+        mes = int(texto_periodo[4:6])
+
+        fecha_inicio = pd.Timestamp(anio, mes, 1)
+        ultimo_dia = calendar.monthrange(anio, mes)[1]
+        fecha_fin = pd.Timestamp(anio, mes, ultimo_dia)
+
+    else:
+        # Respaldo para periodos con otro formato.
+        fechas_periodo = df_periodo["fecha"].dropna()
+
+        fecha_inicio = fechas_periodo.min().normalize()
+        fecha_fin = fechas_periodo.max().normalize()
+
+else:
+    # Para TODOS, abarcar todas las fechas disponibles
+    # en los datos, incluyendo todos los meses y años.
+    fechas_periodo = df["fecha"].dropna()
+
+    fecha_inicio = fechas_periodo.min().normalize()
+    fecha_fin = fechas_periodo.max().normalize()
+
+# Si se seleccionó un día específico, mostrar solo ese día.
+if fecha_filtro is not None:
+    fecha_inicio = pd.Timestamp(fecha_filtro)
+    fecha_fin = pd.Timestamp(fecha_filtro)
+
+# Crear el calendario completo, incluyendo días sin producción.
+calendario_completo = pd.date_range(
+    start=fecha_inicio,
+    end=fecha_fin,
+    freq="D",
+)
+
+# Incorporar los días que no aparecen en los registros.
+por_dia = (
+    por_dia
+    .set_index("dia")
+    .reindex(calendario_completo)
+    .rename_axis("dia")
+    .reset_index()
+)
+
+# Los días sin registros mostrarán valores en cero.
+columnas_numericas = [
+    "registros",
+    "cantidad",
+    "costo_total",
+    "cuadrillas",
+]
+
+por_dia[columnas_numericas] = (
+    por_dia[columnas_numericas]
+    .fillna(0)
+)
+
+por_dia["registros"] = por_dia["registros"].astype(int)
+por_dia["cuadrillas"] = por_dia["cuadrillas"].astype(int)
+
+# Mantener el orden cronológico.
+por_dia = por_dia.sort_values("dia").reset_index(drop=True)
 
 t1, t2 = st.tabs(["📊 Gráfico", "📋 Tabla"])
 
@@ -505,13 +576,18 @@ with t1:
 
     fig_dia.update_layout(
         title="Producción por día (etiqueta = costo total S/)",
-        xaxis_title="Día",
+        xaxis=dict(
+            title="Día",
+            type="date",
+            dtick="D1",
+            tickformat="%d/%m",
+            tickangle=-45,
+        ),
         yaxis=dict(title="Cantidad"),
         legend=dict(orientation="h"),
         height=450,
-        margin=dict(l=10, r=10, t=50, b=10),
+        margin=dict(l=10, r=10, t=50, b=70),
     )
-
     fijar_visibilidad_texto(fig_dia)
     st.plotly_chart(
         fig_dia,
