@@ -1,32 +1,3 @@
-# -*- coding: utf-8 -*-
-# ============================================================
-# REPORTES DE PRODUCCIÓN - APP INDEPENDIENTE DE VISUALIZACIÓN
-# ============================================================
-# Lee los datos reales de la hoja CONSOLIDADO_GENERAL en Google
-# Sheets (la que llena la app de consolidación) y muestra
-# reportes con filtros por PERIODO y FECHA (día).
-#
-# El costo total (S/) se muestra SIEMPRE como etiqueta visible
-# al centro de cada columna en todos los gráficos.
-#
-# Requisitos (requirements.txt):
-#   streamlit
-#   pandas
-#   gspread
-#   google-auth
-#   plotly
-#   openpyxl
-#
-# Ejecutar:
-#   streamlit run app.py
-#
-# Secrets de Streamlit (mismo gcp_service_account que la app de
-# consolidación):
-#   .streamlit/secrets.toml
-#   [gcp_service_account]
-#   ... (igual que la otra app)
-# ============================================================
-
 import io
 import re
 import calendar
