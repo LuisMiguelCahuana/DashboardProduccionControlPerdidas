@@ -6,11 +6,19 @@
 # Sheets (la que llena la app de consolidación) y muestra
 # reportes con filtros por PERIODO y FECHA (día).
 #
-# Requisitos:
-#   pip install streamlit pandas gspread google-auth plotly
+# El costo total (S/) se muestra SIEMPRE como etiqueta visible
+# al centro de cada columna en todos los gráficos.
+#
+# Requisitos (requirements.txt):
+#   streamlit
+#   pandas
+#   gspread
+#   google-auth
+#   plotly
+#   openpyxl
 #
 # Ejecutar:
-#   streamlit run reportes_produccion.py
+#   streamlit run app.py
 #
 # Secrets de Streamlit (mismo gcp_service_account que la app de
 # consolidación):
@@ -22,7 +30,6 @@
 import io
 import re
 import calendar
-import unicodedata
 from datetime import datetime
 
 import pandas as pd
@@ -66,6 +73,16 @@ COLUMNAS = [
     "hoja_origen",
     "archivo_origen",
 ]
+
+# Estilo de las etiquetas de costo: color oscuro sobre fondo
+# claro (burbuja blanca) para que se lean sobre cualquier
+# columna y en cualquier modo del navegador.
+ESTILO_ETIQUETA_COSTO = dict(
+    size=13,
+    color="#111111",
+    bgcolor="rgba(255, 255, 255, 0.85)",
+    borderpad=2,
+)
 
 
 # ============================================================
@@ -122,26 +139,6 @@ def cargar_datos():
     return df
 
 
-def convertir_fecha_parcial(valor):
-    """Convierte 'YYYYMM' a fecha (primer día del mes)."""
-    if pd.isna(valor):
-        return pd.NaT
-
-    texto = str(valor).strip()
-
-    if re.fullmatch(r"\d{6}", texto):
-        try:
-            return pd.Timestamp(
-                int(texto[:4]),
-                int(texto[4:6]),
-                1,
-            )
-        except ValueError:
-            return pd.NaT
-
-    return pd.to_datetime(texto, errors="coerce")
-
-
 def formatear_periodo(valor):
     """'202610' -> 'Octubre 2026' (texto bonito para los filtros)."""
     texto = str(valor).strip()
@@ -155,6 +152,24 @@ def formatear_periodo(valor):
             return texto
 
     return texto
+
+
+def etiqueta_costo(valor):
+    """Convierte un costo en etiqueta corta y legible.
+
+    Ejemplos: 163768.45 -> 'S/ 163.8k', 950.20 -> 'S/ 950'.
+    Formato corto para que quepa dentro de la columna.
+    """
+    if pd.isna(valor):
+        return ""
+
+    valor = float(valor)
+
+    if abs(valor) >= 1_000_000:
+        return f"S/ {valor / 1_000_000:.2f}M"
+    if abs(valor) >= 1_000:
+        return f"S/ {valor / 1_000:.1f}k"
+    return f"S/ {valor:,.0f}"
 
 
 def descargar_excel(df, nombre):
@@ -174,6 +189,34 @@ def descargar_excel(df, nombre):
         ),
         use_container_width=True,
     )
+
+
+def estilo_barra_con_costo():
+    """Configuración común para que el costo sea siempre visible.
+
+    - textposition="inside" + insidetextanchor="middle":
+      la etiqueta queda al CENTRO de cada columna.
+    - uniformtext: mantiene el tamaño de letra y evita que
+      las etiquetas se oculten o solapen al hacer zoom o en
+      pantallas pequeñas.
+    """
+    return dict(
+        textposition="inside",
+        insidetextanchor="middle",
+        textfont=ESTILO_ETIQUETA_COSTO,
+        cliponaxis=False,
+    )
+
+
+def fijar_visibilidad_texto(fig):
+    """Garantiza que las etiquetas nunca se oculten."""
+    fig.update_layout(
+        uniformtext=dict(
+            minsize=11,
+            mode="hide",
+        ),
+    )
+    return fig
 
 
 # ============================================================
@@ -389,34 +432,29 @@ with t1:
             y=por_dia["cantidad"],
             name="Cantidad",
             marker_color="#1f77b4",
-        )
-    )
-
-    fig_dia.add_trace(
-        go.Scatter(
-            x=por_dia["dia"],
-            y=por_dia["costo_total"],
-            name="Costo total (S/)",
-            yaxis="y2",
-            mode="lines+markers",
-            line=dict(color="#ff7f0e"),
+            # ---- COSTO TOTAL VISIBLE AL CENTRO DE CADA COLUMNA ----
+            text=por_dia["costo_total"].apply(etiqueta_costo),
+            customdata=por_dia["costo_total"],
+            hovertemplate=(
+                "Día: %{x|%d/%m/%Y}<br>"
+                "Cantidad: %{y:,.0f}<br>"
+                "Costo total: S/ %{customdata:,.2f}"
+                "<extra></extra>"
+            ),
+            **estilo_barra_con_costo(),
         )
     )
 
     fig_dia.update_layout(
-        title="Producción y costo por día",
+        title="Producción por día (etiqueta = costo total S/)",
         xaxis_title="Día",
         yaxis=dict(title="Cantidad"),
-        yaxis2=dict(
-            title="Costo (S/)",
-            overlaying="y",
-            side="right",
-        ),
         legend=dict(orientation="h"),
         height=450,
         margin=dict(l=10, r=10, t=50, b=10),
     )
 
+    fijar_visibilidad_texto(fig_dia)
     st.plotly_chart(fig_dia, use_container_width=True)
 
 with t2:
@@ -468,18 +506,34 @@ with t1:
         por_cuadrilla,
         x="cuadrilla",
         y="cantidad",
-        color="proceso" if "proceso" in por_cuadrilla.columns else None,
-        hover_data=["costo_total", "dias_trabajados"],
-        title="Cantidad producida por cuadrilla",
+        color_discrete_sequence=["#2ca02c"],
+        # ---- COSTO TOTAL VISIBLE AL CENTRO DE CADA COLUMNA ----
+        text=por_cuadrilla["costo_total"].apply(etiqueta_costo),
+        custom_data=["costo_total", "dias_trabajados"],
+        title="Cantidad producida por cuadrilla (etiqueta = costo total S/)",
+    )
+
+    fig_cuadrilla.update_traces(
+        customdata=fig_cuadrilla.data[0].customdata,
+        hovertemplate=(
+            "Cuadrilla: %{x}<br>"
+            "Cantidad: %{y:,.0f}<br>"
+            "Costo total: S/ %{customdata[0]:,.2f}<br>"
+            "Días trabajados: %{customdata[1]}"
+            "<extra></extra>"
+        ),
+        **estilo_barra_con_costo(),
     )
 
     fig_cuadrilla.update_layout(
         xaxis_title="Cuadrilla / Técnico",
         yaxis_title="Cantidad",
+        showlegend=False,
         height=450,
         margin=dict(l=10, r=10, t=50, b=10),
     )
 
+    fijar_visibilidad_texto(fig_cuadrilla)
     st.plotly_chart(fig_cuadrilla, use_container_width=True)
 
 with t2:
@@ -520,19 +574,44 @@ por_zona = (
 c1, c2 = st.columns([2, 1])
 
 with c1:
-    fig_zona = px.pie(
+    # Barras por zona: la etiqueta de costo centrada en la
+    # columna es más legible que en un gráfico de torta.
+    fig_zona = px.bar(
         por_zona,
-        names="zona",
-        values="cantidad",
-        hole=0.4,
-        title="Distribución de la producción por zona",
+        x="zona",
+        y="cantidad",
+        color="zona",
+        color_discrete_map={
+            "UB": "#1f77b4",
+            "UR": "#ff7f0e",
+            "R": "#2ca02c",
+        },
+        # ---- COSTO TOTAL VISIBLE AL CENTRO DE CADA COLUMNA ----
+        text=por_zona["costo_total"].apply(etiqueta_costo),
+        custom_data=["costo_total", "registros"],
+        title="Producción por zona (etiqueta = costo total S/)",
+    )
+
+    fig_zona.update_traces(
+        hovertemplate=(
+            "Zona: %{x}<br>"
+            "Cantidad: %{y:,.0f}<br>"
+            "Costo total: S/ %{customdata[0]:,.2f}<br>"
+            "Registros: %{customdata[1]}"
+            "<extra></extra>"
+        ),
+        **estilo_barra_con_costo(),
     )
 
     fig_zona.update_layout(
+        showlegend=False,
+        xaxis_title="Zona",
+        yaxis_title="Cantidad",
         height=400,
         margin=dict(l=10, r=10, t=50, b=10),
     )
 
+    fijar_visibilidad_texto(fig_zona)
     st.plotly_chart(fig_zona, use_container_width=True)
 
 with c2:
@@ -574,16 +653,33 @@ with t1:
         x="proceso",
         y="cantidad",
         color="proceso",
-        hover_data=["registros", "costo_total", "cuadrillas"],
-        title="Cantidad producida por proceso",
+        # ---- COSTO TOTAL VISIBLE AL CENTRO DE CADA COLUMNA ----
+        text=por_proceso["costo_total"].apply(etiqueta_costo),
+        custom_data=["costo_total", "registros", "cuadrillas"],
+        title="Cantidad producida por proceso (etiqueta = costo total S/)",
+    )
+
+    fig_proceso.update_traces(
+        hovertemplate=(
+            "Proceso: %{x}<br>"
+            "Cantidad: %{y:,.0f}<br>"
+            "Costo total: S/ %{customdata[0]:,.2f}<br>"
+            "Registros: %{customdata[1]}<br>"
+            "Cuadrillas: %{customdata[2]}"
+            "<extra></extra>"
+        ),
+        **estilo_barra_con_costo(),
     )
 
     fig_proceso.update_layout(
         showlegend=False,
+        xaxis_title="Proceso",
+        yaxis_title="Cantidad",
         height=400,
         margin=dict(l=10, r=10, t=50, b=10),
     )
 
+    fijar_visibilidad_texto(fig_proceso)
     st.plotly_chart(fig_proceso, use_container_width=True)
 
 with t2:
@@ -628,8 +724,22 @@ with t1:
         top_codigos,
         x="codigo",
         y="cantidad",
-        hover_data=["actividad", "costo_total"],
-        title="Top 20 códigos por cantidad producida",
+        color_discrete_sequence=["#9467bd"],
+        # ---- COSTO TOTAL VISIBLE AL CENTRO DE CADA COLUMNA ----
+        text=top_codigos["costo_total"].apply(etiqueta_costo),
+        custom_data=["costo_total", "actividad"],
+        title="Top 20 códigos (etiqueta = costo total S/)",
+    )
+
+    fig_top.update_traces(
+        hovertemplate=(
+            "Código: %{x}<br>"
+            "Actividad: %{customdata[1]}<br>"
+            "Cantidad: %{y:,.0f}<br>"
+            "Costo total: S/ %{customdata[0]:,.2f}"
+            "<extra></extra>"
+        ),
+        **estilo_barra_con_costo(),
     )
 
     fig_top.update_layout(
@@ -639,6 +749,7 @@ with t1:
         margin=dict(l=10, r=10, t=50, b=10),
     )
 
+    fijar_visibilidad_texto(fig_top)
     st.plotly_chart(fig_top, use_container_width=True)
 
 with t2:
