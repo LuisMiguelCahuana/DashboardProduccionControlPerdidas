@@ -142,20 +142,53 @@ def cargar_datos():
                 errors="coerce",
             )
 
+    # Conversión robusta de números: Sheets puede devolverlos como
+    # texto en formato peruano ("4,33", "1,234.56", "S/ 4.33").
+    def convertir_numero(valor):
+        if pd.isna(valor):
+            return None
+
+        if isinstance(valor, (int, float)):
+            return float(valor)
+
+        texto = str(valor).strip().replace(" ", "")
+        texto = texto.replace("S/", "").replace("S/.", "").strip()
+
+        if not texto or texto.upper() in {"NAN", "NONE", "-"}:
+            return None
+
+        # Formato peruano: 12.286,46 -> 12286.46
+        if "," in texto and "." in texto:
+            if texto.rfind(",") > texto.rfind("."):
+                texto = texto.replace(".", "").replace(",", ".")
+            else:
+                texto = texto.replace(",", "")
+
+        elif "," in texto:
+            texto = texto.replace(",", ".")
+
+        try:
+            return float(texto)
+        except (ValueError, TypeError):
+            return None
+
     for col in ["cantidad", "costo_unitario", "costo_total"]:
         if col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors="coerce")
+            df[col] = df[col].apply(convertir_numero)
 
-    # Asegurar que el costo total esté siempre calculado:
-    # si falta o es 0, se recalcula como cantidad * costo_unitario.
-    if "costo_total" in df.columns and "costo_unitario" in df.columns:
-        costo_recalculado = (
-            pd.to_numeric(df["cantidad"], errors="coerce")
-            * pd.to_numeric(df["costo_unitario"], errors="coerce")
-        )
+    # EL COSTO TOTAL SE RECALCULA SIEMPRE como cantidad * costo_unitario,
+    # que es su definición exacta. El valor guardado en Sheets solo se
+    # usa como respaldo si el recálculo no es posible (p. ej. falta el
+    # costo unitario pero sí hay un total guardado).
+    if {"cantidad", "costo_unitario", "costo_total"}.issubset(df.columns):
+        calculado = df["cantidad"] * df["costo_unitario"]
 
-        df["costo_total"] = df["costo_total"].fillna(0)
-        df.loc[df["costo_total"] == 0, "costo_total"] = costo_recalculado
+        df["costo_total"] = calculado.fillna(df["costo_total"]).fillna(0)
+
+        # Unidades con cantidad pero sin costo unitario no generan costo.
+        df.loc[df["costo_unitario"].isna(), "costo_total"] = df.loc[
+            df["costo_unitario"].isna(), "costo_total"
+        ].fillna(0)
 
     # Filtrar filas totalmente vacías.
     df = df.dropna(how="all").reset_index(drop=True)
