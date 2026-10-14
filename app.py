@@ -1,32 +1,3 @@
-# -*- coding: utf-8 -*-
-# ============================================================
-# REPORTES DE PRODUCCIÓN - APP INDEPENDIENTE DE VISUALIZACIÓN
-# ============================================================
-# Lee los datos reales de la hoja CONSOLIDADO_GENERAL en Google
-# Sheets (la que llena la app de consolidación) y muestra
-# reportes con filtros por PERIODO y FECHA (día).
-#
-# El costo total (S/) se muestra SIEMPRE como etiqueta visible
-# al centro de cada columna en todos los gráficos.
-#
-# Requisitos (requirements.txt):
-#   streamlit
-#   pandas
-#   gspread
-#   google-auth
-#   plotly
-#   openpyxl
-#
-# Ejecutar:
-#   streamlit run app.py
-#
-# Secrets de Streamlit (mismo gcp_service_account que la app de
-# consolidación):
-#   .streamlit/secrets.toml
-#   [gcp_service_account]
-#   ... (igual que la otra app)
-# ============================================================
-
 import io
 import re
 import calendar
@@ -74,12 +45,13 @@ COLUMNAS = [
     "archivo_origen",
 ]
 
-# Estilo de las etiquetas de costo. Solo propiedades válidas de
-# textfont (size, color, family, weight).
+# ============================================================
+# ESTILO DE LAS ETIQUETAS DE COSTO
+# ============================================================
+
 ESTILO_ETIQUETA_COSTO = dict(
-    size=14,
-    color="#111111",
-    family="Arial Black, Arial, sans-serif",
+    size=12,
+    family="Arial, sans-serif",
 )
 
 
@@ -209,26 +181,12 @@ def formatear_periodo(valor):
             return texto
 
     return texto
-
-
 def etiqueta_costo(valor):
-    """Convierte un costo en etiqueta corta y legible.
-
-    Ejemplos: 163768.45 -> 'S/ 163.8k', 950.20 -> 'S/ 950'.
-    Formato corto para que quepa dentro de la columna.
-    """
+    """Muestra el costo completo, sin abreviar en miles o millones."""
     if pd.isna(valor):
         return ""
 
-    valor = float(valor)
-
-    if abs(valor) >= 1_000_000:
-        return f"S/ {valor / 1_000_000:.2f}M"
-    if abs(valor) >= 1_000:
-        return f"S/ {valor / 1_000:.1f}k"
-    return f"S/ {valor:,.0f}"
-
-
+    return f"S/ {float(valor):,.2f}"
 def descargar_excel(df, nombre):
     """Genera un botón de descarga del reporte en Excel."""
     salida = io.BytesIO()
@@ -246,51 +204,55 @@ def descargar_excel(df, nombre):
         ),
         use_container_width=True,
     )
-
-
-def estilo_barra_con_costo():
-    """Configuración común para que el costo sea SIEMPRE visible.
-
-    - textposition="outside": la etiqueta va ARRIBA de cada
-      columna, no dentro. Así se muestra completa aunque la
-      columna sea muy pequeña (1, 5, 10 de altura).
-    - Con esto TODOS los costos se ven siempre: los de las
-      columnas grandes quedan pegados a la parte superior de
-      la columna y los de las columnas pequeñas quedan
-      igualmente legibles sobre ellas.
+def estilo_barra_con_costo(valores):
     """
+    Centra el costo en las barras altas y lo coloca arriba
+    cuando la barra es demasiado pequeña.
+    """
+    valores = pd.to_numeric(
+        pd.Series(valores), errors="coerce"
+    ).fillna(0)
+
+    maximo = valores.max() if not valores.empty else 0
+
+    posiciones = [
+        "inside" if maximo > 0 and valor >= maximo * 0.12
+        else "outside"
+        for valor in valores
+    ]
+
     return dict(
-        textposition="outside",
+        textposition=posiciones,
         textfont=ESTILO_ETIQUETA_COSTO,
+        insidetextanchor="middle",
         cliponaxis=False,
     )
 
 
 def fijar_visibilidad_texto(fig):
-    """Garantiza que las etiquetas nunca se oculten ni se corten.
+    """Deja espacio superior para las etiquetas externas."""
+    maximos = []
 
-    - Espacio extra arriba para que las etiquetas "outside"
-      quepan completas sin recortarse.
-    - El eje Y arranca en 0 y crece según los datos.
-    """
+    for trace in fig.data:
+        if trace.y is not None:
+            valores = pd.to_numeric(
+                pd.Series(trace.y), errors="coerce"
+            ).dropna()
+
+            if not valores.empty:
+                maximos.append(float(valores.max()))
+
+    maximo = max(maximos) if maximos else 0
+
     fig.update_layout(
-        margin=dict(t=90, r=30),
+        margin=dict(l=20, r=45, t=90, b=40),
         yaxis=dict(
             rangemode="tozero",
-            # 15% de holgura para la etiqueta de la columna más alta.
-            range=[
-                0,
-                None
-                if not fig.data
-                else max(
-                    (max(trace.y) if len(trace.y) else 0)
-                    * 1.15
-                    for trace in fig.data
-                    if trace.y is not None
-                ),
-            ],
+            range=[0, maximo * 1.30 if maximo > 0 else 1],
+            automargin=True,
         ),
     )
+
     return fig
 
 
@@ -530,7 +492,7 @@ with t1:
                 "Costo total: S/ %{customdata:,.2f}"
                 "<extra></extra>"
             ),
-            **estilo_barra_con_costo(),
+            **estilo_barra_con_costo(por_dia["cantidad"]),
         )
     )
 
@@ -544,7 +506,12 @@ with t1:
     )
 
     fijar_visibilidad_texto(fig_dia)
-    st.plotly_chart(fig_dia, use_container_width=True)
+    st.plotly_chart(
+        fig_dia,
+        use_container_width=True,
+        theme="streamlit",
+        config={"responsive": True, "displaylogo": False},
+    )
 
 with t2:
     por_dia_mostrar = por_dia.copy()
@@ -611,7 +578,7 @@ with t1:
             "Días trabajados: %{customdata[1]}"
             "<extra></extra>"
         ),
-        **estilo_barra_con_costo(),
+        **estilo_barra_con_costo(por_cuadrilla["cantidad"]),
     )
 
     fig_cuadrilla.update_layout(
@@ -682,7 +649,7 @@ with t1:
             "Registros: %{customdata[2]}"
             "<extra></extra>"
         ),
-        **estilo_barra_con_costo(),
+        **estilo_barra_con_costo(monto_cuadrilla["monto"]),
     )
 
     fig_monto.update_layout(
@@ -760,7 +727,7 @@ with c1:
             "Registros: %{customdata[1]}"
             "<extra></extra>"
         ),
-        **estilo_barra_con_costo(),
+        **estilo_barra_con_costo(por_zona["cantidad"]),
     )
 
     fig_zona.update_layout(
@@ -828,7 +795,7 @@ with t1:
             "Cuadrillas: %{customdata[2]}"
             "<extra></extra>"
         ),
-        **estilo_barra_con_costo(),
+        **estilo_barra_con_costo(por_proceso["cantidad"]),
     )
 
     fig_proceso.update_layout(
@@ -899,7 +866,7 @@ with t1:
             "Costo total: S/ %{customdata[0]:,.2f}"
             "<extra></extra>"
         ),
-        **estilo_barra_con_costo(),
+        **estilo_barra_con_costo(top_codigos["cantidad"]),
     )
 
     fig_top.update_layout(
