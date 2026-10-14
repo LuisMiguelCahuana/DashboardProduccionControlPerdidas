@@ -258,6 +258,7 @@ if df.empty:
 # La columna original "fecha" se conserva para el filtro.
 df["_fecha_dt"] = pd.to_datetime(
     df["fecha"],
+    format="mixed",
     dayfirst=True,
     errors="coerce",
 )
@@ -435,12 +436,10 @@ st.divider()
 
 st.header("📅 1. Producción por día")
 
-# Utilizar los registros que ya pasaron los filtros.
-df_grafico_dia = df_filtrado.dropna(subset=["fecha"]).copy()
+df_grafico_dia = df_filtrado.dropna(subset=["_fecha_dt"]).copy()
 
-# Normalizar las fechas para agrupar por día.
 df_grafico_dia["dia"] = (
-    df_grafico_dia["fecha"].dt.normalize()
+    df_grafico_dia["_fecha_dt"].dt.normalize()
 )
 
 # Agrupar los registros existentes por día.
@@ -472,24 +471,27 @@ if periodo_filtro != "TODOS":
         fecha_fin = pd.Timestamp(anio, mes, ultimo_dia)
 
     else:
-        # Respaldo para periodos con otro formato.
-        fechas_periodo = df_periodo["fecha"].dropna()
+        fechas_periodo = df_periodo["_fecha_dt"].dropna()
 
         fecha_inicio = fechas_periodo.min().normalize()
         fecha_fin = fechas_periodo.max().normalize()
 
 else:
-    # Para TODOS, abarcar todas las fechas disponibles
-    # en los datos, incluyendo todos los meses y años.
-    fechas_periodo = df["fecha"].dropna()
+    fechas_periodo = df["_fecha_dt"].dropna()
 
     fecha_inicio = fechas_periodo.min().normalize()
     fecha_fin = fechas_periodo.max().normalize()
 
-# Si se seleccionó un día específico, mostrar solo ese día.
 if fecha_filtro is not None:
-    fecha_inicio = pd.Timestamp(fecha_filtro)
-    fecha_fin = pd.Timestamp(fecha_filtro)
+    fecha_seleccionada = pd.to_datetime(
+        fecha_filtro,
+        dayfirst=True,
+        errors="coerce",
+    )
+
+    if pd.notna(fecha_seleccionada):
+        fecha_inicio = fecha_seleccionada.normalize()
+        fecha_fin = fecha_seleccionada.normalize()
 
 # Crear el calendario completo, incluyendo días sin producción.
 calendario_completo = pd.date_range(
@@ -606,7 +608,7 @@ por_cuadrilla = (
         cantidad=("cantidad", "sum"),
         costo_total=("costo_total", "sum"),
         dias_trabajados=(
-            "fecha",
+            "_fecha_dt",
             lambda x: x.dropna().dt.normalize().nunique(),
         ),
     )
@@ -962,8 +964,9 @@ with t2:
 
 st.header("🗓️ 7. Resumen cuadrilla por día")
 
-df_pivote = df_filtrado.dropna(subset=["fecha"]).copy()
-df_pivote["dia"] = df_pivote["fecha"].dt.strftime("%d/%m/%Y")
+df_pivote = df_filtrado.dropna(subset=["_fecha_dt"]).copy()
+
+df_pivote["dia"] = df_pivote["_fecha_dt"].dt.strftime("%d/%m/%Y")
 
 pivote_cantidad = df_pivote.pivot_table(
     index="cuadrilla",
