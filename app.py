@@ -453,17 +453,33 @@ cuadrillas_activas = df_filtrado["cuadrilla"].nunique()
 c4.metric("Cuadrillas activas", f"{cuadrillas_activas:,}")
 
 st.divider()
-
-
 # ============================================================
 # REPORTE 1: PRODUCCIÓN POR DÍA
 # ============================================================
 
 st.header("📅 1. Producción por día")
 
+# El gráfico utiliza los datos del periodo seleccionado.
+# Si Periodo = TODOS, muestra únicamente el mes más reciente.
+df_grafico_dia = df_filtrado.dropna(subset=["fecha"]).copy()
+
+if periodo_filtro == "TODOS" and not df_grafico_dia.empty:
+    df_grafico_dia["_periodo_fecha"] = (
+        df_grafico_dia["fecha"].dt.strftime("%Y%m")
+    )
+
+    periodo_mas_reciente = df_grafico_dia["_periodo_fecha"].max()
+
+    df_grafico_dia = df_grafico_dia[
+        df_grafico_dia["_periodo_fecha"] == periodo_mas_reciente
+    ].copy()
+
+    df_grafico_dia.drop(columns=["_periodo_fecha"], inplace=True)
+
+# Agrupar por día, sin duplicar fechas.
 por_dia = (
-    df_filtrado.dropna(subset=["fecha"])
-    .groupby(df_filtrado["fecha"].dt.normalize())
+    df_grafico_dia
+    .groupby(df_grafico_dia["fecha"].dt.normalize())
     .agg(
         registros=("cantidad", "size"),
         cantidad=("cantidad", "sum"),
@@ -473,6 +489,7 @@ por_dia = (
     .reset_index()
     .rename(columns={"fecha": "dia"})
 )
+
 
 t1, t2 = st.tabs(["📊 Gráfico", "📋 Tabla"])
 
