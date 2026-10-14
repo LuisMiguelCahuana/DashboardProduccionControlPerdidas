@@ -305,53 +305,49 @@ periodo_filtro = st.sidebar.selectbox(
 # ------------------------------------------------------------
 # 2. FILTRO POR FECHA (DÍA)
 # ------------------------------------------------------------
-# El rango de fechas se adapta al periodo seleccionado.
+
+# Filtrar los registros según el periodo seleccionado.
 df_periodo = df.copy()
 
 if periodo_filtro != "TODOS":
     df_periodo = df_periodo[
-        df_periodo["periodo"].astype(str).str.strip() == periodo_filtro
+        df_periodo["periodo"].astype(str).str.strip()
+        == str(periodo_filtro).strip()
     ]
 
-fechas_validas = df_periodo["fecha"].dropna()
+# Obtener únicamente las fechas existentes en el campo fecha.
+# Normalizar elimina la hora y permite evitar fechas duplicadas.
+fechas_validas = (
+    df_periodo["fecha"]
+    .dropna()
+    .dt.normalize()
+    .drop_duplicates()
+    .sort_values()
+)
 
-if fechas_validas.empty:
-    st.warning(
-        "No se encontraron fechas válidas para el periodo seleccionado. "
-        "Algunos registros (p. ej. Itinerante) pueden tener la fecha "
-        "guardada como texto de periodo."
-    )
-    st.stop()
-
-fecha_min = fechas_validas.min().normalize()
-fecha_max = fechas_validas.max().normalize()
-
-# Mostrar todos los días entre la fecha mínima y máxima
-# del periodo seleccionado, sin repetir fechas.
-dias_disponibles = pd.date_range(
-    start=fecha_min,
-    end=fecha_max,
-    freq="D",
-).date
-
-opciones_fecha = ["TODOS"] + list(dias_disponibles)
+# Crear las opciones del filtro con fechas únicas.
+opciones_fecha = ["TODOS"] + fechas_validas.tolist()
 
 fecha_opcion = st.sidebar.selectbox(
     "📆 Fecha (día específico)",
     options=opciones_fecha,
     index=0,
     format_func=lambda d: (
-        "Todos los días"
+        "Todas las fechas"
         if d == "TODOS"
         else d.strftime("%d/%m/%Y")
     ),
     help=(
-        "Solo aparecen los días con registros dentro del periodo "
-        "seleccionado. Elige 'Todos los días' para ver todo el periodo."
+        "Muestra únicamente las fechas existentes en los registros "
+        "del periodo seleccionado, sin repetir fechas."
     ),
 )
 
-fecha_filtro = None if fecha_opcion == "TODOS" else fecha_opcion
+fecha_filtro = (
+    None
+    if fecha_opcion == "TODOS"
+    else fecha_opcion
+)
 
 # ------------------------------------------------------------
 # 3. FILTROS ADICIONALES
