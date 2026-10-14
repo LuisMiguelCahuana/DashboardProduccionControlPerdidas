@@ -193,40 +193,93 @@ def estilo_barra_con_costo(valores):
         cliponaxis=False,
     )
 
-
 def fijar_visibilidad_texto(fig):
+    """
+    Ajusta el eje Y para dejar espacio a las etiquetas
+    de los costos sin modificar las dimensiones del gráfico.
+    """
+
     maximos = []
 
     for trace in fig.data:
         if trace.y is not None:
             valores = pd.to_numeric(
-                pd.Series(trace.y), errors="coerce"
+                pd.Series(trace.y),
+                errors="coerce",
             ).dropna()
 
             if not valores.empty:
-                maximos.append(float(valores.max()))
+                maximos.extend(valores.tolist())
 
     maximo = max(maximos) if maximos else 0
 
-    # Solo ajusta el rango del eje Y; conserva los márgenes
-    # y el alto que cada gráfico definió, para no deformarlo.
-    fig.update_layout(
-        yaxis=dict(
-            rangemode="tozero",
-            range=[0, maximo * 1.30 if maximo > 0 else 1],
-            automargin=True,
-        ),
+    limite_superior = (
+        maximo * 1.30 if maximo > 0 else 1
+    )
+
+    fig.update_yaxes(
+        range=[0, limite_superior],
+        automargin=True,
+        fixedrange=False,
     )
 
     return fig
 
+# ============================================================
+# CONFIGURACIÓN VISUAL DE LOS GRÁFICOS
+# ============================================================
 
-# Tamaño fijo para todos los gráficos: evita que se
-# deformen al redimensionar la ventana del navegador.
-ANCHO_GRAFICO = 1000
 ALTO_GRAFICO = 450
 
 
+def mostrar_grafico(fig):
+    """
+    Mantiene una presentación estable de los gráficos Plotly
+    al seleccionar pestañas, filtros o cambiar el tamaño
+    de la ventana del navegador.
+    """
+
+    # Mantener una altura uniforme.
+    fig.update_layout(
+        height=ALTO_GRAFICO,
+        autosize=True,
+        margin=dict(
+            l=60,
+            r=30,
+            t=65,
+            b=80,
+        ),
+        font=dict(
+            family="Arial, sans-serif",
+            size=12,
+        ),
+    )
+
+    # Permitir que las etiquetas largas se visualicen
+    # sin modificar la escala de los datos.
+    fig.update_xaxes(
+        automargin=True,
+    )
+
+    fig.update_yaxes(
+        automargin=True,
+    )
+
+    st.plotly_chart(
+        fig,
+        use_container_width=True,
+        theme="streamlit",
+        config={
+            "responsive": True,
+            "displaylogo": False,
+            "scrollZoom": False,
+            "modeBarButtonsToRemove": [
+                "toggleSpikelines",
+                "hoverClosestCartesian",
+                "hoverCompareCartesian",
+            ],
+        },
+    )
 def mostrar_grafico(fig):
     """Configuración común para los gráficos Plotly.
 
