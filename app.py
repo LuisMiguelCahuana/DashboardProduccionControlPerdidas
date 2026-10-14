@@ -302,50 +302,46 @@ periodo_filtro = st.sidebar.selectbox(
     index=0,
 )
 
-# ------------------------------------------------------------
-# 2. FILTRO POR FECHA (DÍA)
-# ------------------------------------------------------------
+# ============================================================
+# 2. FILTRO POR FECHA: VALORES REALES Y ÚNICOS DE LA COLUMNA
+# ============================================================
 
-# Filtrar los registros según el periodo seleccionado.
 df_periodo = df.copy()
 
+# Filtrar según el periodo seleccionado
 if periodo_filtro != "TODOS":
     df_periodo = df_periodo[
         df_periodo["periodo"].astype(str).str.strip()
         == str(periodo_filtro).strip()
     ]
 
-# Obtener únicamente las fechas existentes en el campo fecha.
-# Normalizar elimina la hora y permite evitar fechas duplicadas.
-fechas_validas = (
+# Obtener los valores originales de la columna fecha,
+# conservar los valores tal como aparecen y eliminar duplicados.
+fechas_disponibles = (
     df_periodo["fecha"]
     .dropna()
-    .dt.normalize()
-    .drop_duplicates()
-    .sort_values()
+    .astype(str)
+    .str.strip()
 )
 
-# Crear las opciones del filtro con fechas únicas.
-opciones_fecha = ["TODOS"] + fechas_validas.tolist()
+fechas_disponibles = fechas_disponibles[
+    fechas_disponibles != ""
+].drop_duplicates().tolist()
+
+# Ordenar sin eliminar ni modificar los valores originales
+opciones_fecha = ["TODOS"] + sorted(
+    fechas_disponibles,
+    key=lambda x: x
+)
 
 fecha_opcion = st.sidebar.selectbox(
-    "📆 Fecha (día específico)",
+    "📆 Fecha",
     options=opciones_fecha,
     index=0,
-    format_func=lambda d: (
-        "Todas las fechas"
-        if d == "TODOS"
-        else d.strftime("%d/%m/%Y")
-    ),
-    help=(
-        "Muestra únicamente las fechas existentes en los registros "
-        "del periodo seleccionado, sin repetir fechas."
-    ),
 )
 
 fecha_filtro = (
-    None
-    if fecha_opcion == "TODOS"
+    None if fecha_opcion == "TODOS"
     else fecha_opcion
 )
 
