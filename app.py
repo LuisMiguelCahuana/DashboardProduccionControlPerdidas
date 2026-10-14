@@ -1,3 +1,32 @@
+# -*- coding: utf-8 -*-
+# ============================================================
+# REPORTES DE PRODUCCIÓN - APP INDEPENDIENTE DE VISUALIZACIÓN
+# ============================================================
+# Lee los datos reales de la hoja CONSOLIDADO_GENERAL en Google
+# Sheets (la que llena la app de consolidación) y muestra
+# reportes con filtros por PERIODO y FECHA (día).
+#
+# El costo total (S/) se muestra SIEMPRE como etiqueta visible
+# al centro de cada columna en todos los gráficos.
+#
+# Requisitos (requirements.txt):
+#   streamlit
+#   pandas
+#   gspread
+#   google-auth
+#   plotly
+#   openpyxl
+#
+# Ejecutar:
+#   streamlit run app.py
+#
+# Secrets de Streamlit (mismo gcp_service_account que la app de
+# consolidación):
+#   .streamlit/secrets.toml
+#   [gcp_service_account]
+#   ... (igual que la otra app)
+# ============================================================
+
 import io
 import re
 import calendar
@@ -597,10 +626,81 @@ with t2:
 
 
 # ============================================================
-# REPORTE 3: PRODUCCIÓN POR ZONA
+# REPORTE 3: MONTO POR CUADRILLA
 # ============================================================
 
-st.header("🗺️ 3. Producción por zona")
+st.header("💰 3. Monto por cuadrilla")
+
+monto_cuadrilla = (
+    df_filtrado.groupby("cuadrilla")
+    .agg(
+        monto=("costo_total", "sum"),
+        registros=("cantidad", "size"),
+        cantidad=("cantidad", "sum"),
+    )
+    .reset_index()
+    .sort_values("monto", ascending=False)
+)
+
+t1, t2 = st.tabs(["📊 Gráfico", "📋 Tabla"])
+
+with t1:
+    fig_monto = px.bar(
+        monto_cuadrilla,
+        x="cuadrilla",
+        y="monto",
+        color_discrete_sequence=["#d62728"],
+        # ---- MONTO VISIBLE AL CENTRO DE CADA COLUMNA ----
+        text=monto_cuadrilla["monto"].apply(etiqueta_costo),
+        custom_data=["monto", "cantidad", "registros"],
+        title="Monto (S/) por cuadrilla",
+    )
+
+    fig_monto.update_traces(
+        hovertemplate=(
+            "Cuadrilla: %{x}<br>"
+            "Monto: S/ %{customdata[0]:,.2f}<br>"
+            "Cantidad producida: %{customdata[1]:,.0f}<br>"
+            "Registros: %{customdata[2]}"
+            "<extra></extra>"
+        ),
+        **estilo_barra_con_costo(),
+    )
+
+    fig_monto.update_layout(
+        xaxis_title="Cuadrilla / Técnico",
+        yaxis=dict(title="Monto (S/)"),
+        showlegend=False,
+        height=450,
+        margin=dict(l=10, r=10, t=50, b=10),
+    )
+
+    fijar_visibilidad_texto(fig_monto)
+    st.plotly_chart(fig_monto, use_container_width=True)
+
+with t2:
+    monto_cuadrilla_mostrar = monto_cuadrilla.copy()
+    monto_cuadrilla_mostrar["monto"] = monto_cuadrilla_mostrar[
+        "monto"
+    ].round(2)
+
+    st.dataframe(
+        monto_cuadrilla_mostrar,
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    descargar_excel(
+        monto_cuadrilla_mostrar,
+        f"monto_por_cuadrilla_{datetime.now().strftime('%Y%m%d')}.xlsx",
+    )
+
+
+# ============================================================
+# REPORTE 4: PRODUCCIÓN POR ZONA
+# ============================================================
+
+st.header("🗺️ 4. Producción por zona")
 
 por_zona = (
     df_filtrado.groupby("zona")
@@ -673,7 +773,7 @@ with c2:
 # REPORTE 4: PRODUCCIÓN POR PROCESO
 # ============================================================
 
-st.header("⚙️ 4. Producción por proceso")
+st.header("⚙️ 5. Producción por proceso")
 
 por_proceso = (
     df_filtrado.groupby("proceso")
@@ -746,7 +846,7 @@ with t2:
 # REPORTE 5: TOP ACTIVIDADES / CÓDIGOS
 # ============================================================
 
-st.header("🏆 5. Top códigos de actividad")
+st.header("🏆 6. Top códigos de actividad")
 
 top_codigos = (
     df_filtrado.groupby(["codigo", "actividad"])
@@ -816,7 +916,7 @@ with t2:
 # REPORTE 6: RESUMEN CUADRILLA x DÍA (PIVOTE)
 # ============================================================
 
-st.header("🗓️ 6. Resumen cuadrilla por día")
+st.header("🗓️ 7. Resumen cuadrilla por día")
 
 df_pivote = df_filtrado.dropna(subset=["fecha"]).copy()
 df_pivote["dia"] = df_pivote["fecha"].dt.strftime("%d/%m/%Y")
@@ -845,7 +945,7 @@ descargar_excel(
 # REPORTE 7: DETALLE COMPLETO FILTRADO
 # ============================================================
 
-st.header("📄 7. Detalle de registros")
+st.header("📄 8. Detalle de registros")
 
 st.dataframe(
     df_filtrado,
