@@ -74,14 +74,12 @@ COLUMNAS = [
     "archivo_origen",
 ]
 
-# Estilo de las etiquetas de costo: color oscuro sobre fondo
-# claro (burbuja blanca) para que se lean sobre cualquier
-# columna y en cualquier modo del navegador.
+# Estilo de las etiquetas de costo. Solo propiedades válidas
+# de textfont (size, color, family): bgcolor/borderpad no
+# existen en barras y generan ValueError en Plotly 6+.
 ESTILO_ETIQUETA_COSTO = dict(
     size=13,
     color="#111111",
-    bgcolor="rgba(255, 255, 255, 0.85)",
-    borderpad=2,
 )
 
 
