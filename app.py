@@ -326,13 +326,15 @@ if fechas_validas.empty:
 fecha_min = fechas_validas.min().normalize()
 fecha_max = fechas_validas.max().normalize()
 
-# Solo se muestran los días que TIENEN REGISTROS dentro del
-# periodo seleccionado (no cualquier día del calendario).
-dias_con_registros = sorted(
-    fechas_validas.dt.normalize().dt.date.unique()
-)
+# Mostrar todos los días entre la fecha mínima y máxima
+# del periodo seleccionado, sin repetir fechas.
+dias_disponibles = pd.date_range(
+    start=fecha_min,
+    end=fecha_max,
+    freq="D",
+).date
 
-opciones_fecha = ["TODOS"] + dias_con_registros
+opciones_fecha = ["TODOS"] + list(dias_disponibles)
 
 fecha_opcion = st.sidebar.selectbox(
     "📆 Fecha (día específico)",
