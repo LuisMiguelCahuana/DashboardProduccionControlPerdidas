@@ -91,28 +91,13 @@ def cargar_datos():
 
     df = pd.DataFrame(valores[1:], columns=encabezados)
 
-    # Normalizar tipos.
+    # Conservar los valores originales de la columna fecha.
     if "fecha" in df.columns:
-        # La fecha puede llegar como TEXTO ("2026-10-08") o como
-        # NÚMERO DE SERIE de Excel (46268 = 08/10/2026).
-        serie = pd.to_numeric(df["fecha"], errors="coerce")
-
-        # Números de serie de Excel (origin 1899-12-30).
-        if serie.notna().any():
-            df["fecha"] = pd.to_datetime(
-                serie,
-                unit="D",
-                origin="1899-12-30",
-                errors="coerce",
-            )
-
-        # Texto de fecha normal: "2026-10-08", "08/10/2026", etc.
-        else:
-            df["fecha"] = pd.to_datetime(
-                df["fecha"],
-                dayfirst=True,
-                errors="coerce",
-            )
+        df["fecha"] = df["fecha"].astype(str).str.strip()
+        df.loc[
+            df["fecha"].isin(["", "nan", "None"]),
+            "fecha"
+        ] = ""
 
     # Conversión robusta de números: Sheets puede devolverlos como
     # texto en formato peruano ("4,33", "1,234.56", "S/ 4.33").
@@ -269,6 +254,13 @@ except Exception as e:
 if df.empty:
     st.warning("No hay registros en el consolidado todavía.")
     st.stop()
+# Crear una columna auxiliar de fechas para los gráficos.
+# La columna original "fecha" se conserva para el filtro.
+df["_fecha_dt"] = pd.to_datetime(
+    df["fecha"],
+    dayfirst=True,
+    errors="coerce",
+)
 
 
 # ============================================================
@@ -303,20 +295,17 @@ periodo_filtro = st.sidebar.selectbox(
 )
 
 # ============================================================
-# 2. FILTRO POR FECHA: VALORES REALES Y ÚNICOS DE LA COLUMNA
+# 2. FILTRO POR FECHA: VALORES REALES Y ÚNICOS
 # ============================================================
 
 df_periodo = df.copy()
 
-# Filtrar según el periodo seleccionado
 if periodo_filtro != "TODOS":
     df_periodo = df_periodo[
         df_periodo["periodo"].astype(str).str.strip()
         == str(periodo_filtro).strip()
     ]
 
-# Obtener los valores originales de la columna fecha,
-# conservar los valores tal como aparecen y eliminar duplicados.
 fechas_disponibles = (
     df_periodo["fecha"]
     .dropna()
@@ -328,11 +317,7 @@ fechas_disponibles = fechas_disponibles[
     fechas_disponibles != ""
 ].drop_duplicates().tolist()
 
-# Ordenar sin eliminar ni modificar los valores originales
-opciones_fecha = ["TODOS"] + sorted(
-    fechas_disponibles,
-    key=lambda x: x
-)
+opciones_fecha = ["TODOS"] + sorted(fechas_disponibles)
 
 fecha_opcion = st.sidebar.selectbox(
     "📆 Fecha",
@@ -388,9 +373,9 @@ cuadrillas_filtro = st.sidebar.multiselect(
 df_filtrado = df_periodo.copy()
 
 if fecha_filtro is not None:
-    fecha_ts = pd.Timestamp(fecha_filtro)
     df_filtrado = df_filtrado[
-        df_filtrado["fecha"].dt.normalize() == fecha_ts
+        df_filtrado["fecha"].astype(str).str.strip()
+        == fecha_filtro
     ]
 
 df_filtrado = df_filtrado[
@@ -398,7 +383,6 @@ df_filtrado = df_filtrado[
     & df_filtrado["zona"].isin(zonas_filtro)
     & df_filtrado["cuadrilla"].isin(cuadrillas_filtro)
 ]
-
 if df_filtrado.empty:
     st.warning("No hay registros con los filtros seleccionados.")
     st.stop()
@@ -415,7 +399,7 @@ titulo_periodo = (
 )
 
 titulo_fecha = (
-    " - " + fecha_filtro.strftime("%d/%m/%Y")
+    " - " + str(fecha_filtro)
     if fecha_filtro is not None
     else ""
 )
