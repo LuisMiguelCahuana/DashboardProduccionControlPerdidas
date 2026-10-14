@@ -280,34 +280,6 @@ def mostrar_grafico(fig):
             ],
         },
     )
-def mostrar_grafico(fig):
-    """Configuración común para los gráficos Plotly.
-
-    Con tamaño fijo y responsive desactivado, el gráfico
-    no se estira ni se deforma al cambiar el tamaño de
-    la ventana o al interactuar con él.
-    """
-    # Fijar dimensiones si el gráfico no las definió.
-    if fig.layout.height is None:
-        fig.update_layout(height=ALTO_GRAFICO)
-    if fig.layout.width is None:
-        fig.update_layout(width=ANCHO_GRAFICO)
-
-    st.plotly_chart(
-        fig,
-        use_container_width=False,
-        theme="streamlit",
-        config={
-            "responsive": False,
-            "displaylogo": False,
-            "modeBarButtonsToRemove": [
-                "toggleSpikelines",
-                "hoverClosestCartesian",
-                "hoverCompareCartesian",
-            ],
-        },
-    )
-
 
 # ============================================================
 # CARGA DE DATOS
