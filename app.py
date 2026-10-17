@@ -501,7 +501,7 @@ df_filtrado = df_filtrado[
 ]
 
 if df_filtrado.empty:
-    st.warning("No hay registros con los filtros seleccionados.")
+    st.info("Seleccione una o mas unidades de negocio")
     st.stop()
 
 
