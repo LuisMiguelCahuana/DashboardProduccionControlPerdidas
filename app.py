@@ -31,6 +31,7 @@ SCOPES = [
 ]
 
 COLUMNAS = [
+    "unidad_negocio",
     "periodo",
     "fecha",
     "suministro",
@@ -310,6 +311,34 @@ df["_fecha_dt"] = pd.to_datetime(
 # ============================================================
 
 st.sidebar.title("🔎 Filtros")
+# ------------------------------------------------------------
+# FILTRO POR UNIDAD DE NEGOCIO
+# ------------------------------------------------------------
+
+unidades_disponibles = sorted(
+    df["unidad_negocio"]
+    .dropna()
+    .astype(str)
+    .str.strip()
+    .loc[lambda x: x != ""]
+    .unique()
+    .tolist()
+)
+
+unidades_filtro = st.sidebar.multiselect(
+    "🏢 UnidadNegocio",
+    options=unidades_disponibles,
+    default=unidades_disponibles,
+    key="filtro_unidad_negocio",
+)
+
+# Filtrar los datos según las unidades seleccionadas
+df = df[
+    df["unidad_negocio"]
+    .astype(str)
+    .str.strip()
+    .isin(unidades_filtro)
+].copy()
 
 # ------------------------------------------------------------
 # 1. FILTRO POR PERIODO
@@ -456,7 +485,19 @@ titulo_fecha = (
 )
 
 st.title("📈 REPORTES DE PRODUCCIÓN")
-st.caption(f"{titulo_periodo}{titulo_fecha}")
+
+if len(unidades_filtro) == len(unidades_disponibles):
+    titulo_unidad = "Todas las unidades de negocio"
+elif unidades_filtro:
+    titulo_unidad = ", ".join(unidades_filtro)
+else:
+    titulo_unidad = "Sin unidad seleccionada"
+
+st.caption(
+    f"🏢 {titulo_unidad} | "
+    f"📅 {titulo_periodo}{titulo_fecha}"
+)
+
 
 c1, c2, c3, c4 = st.columns(4)
 
