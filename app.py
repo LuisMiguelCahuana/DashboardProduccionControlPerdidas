@@ -80,15 +80,52 @@ def cargar_datos():
     if not valores:
         raise ValueError(f"La hoja {HOJA_ORIGEN} está vacía.")
 
-    encabezados = valores[0]
-
-    if encabezados != COLUMNAS:
-        st.warning(
-            "Los encabezados de la hoja no coinciden con la estructura "
-            "esperada. Se usarán los encabezados encontrados."
+    # Normalizar encabezados de Google Sheets
+    encabezados = [
+        str(col).replace("\ufeff", "").replace("\xa0", " ")
+        .strip().lower().replace(" ", "_")
+        for col in valores[0]
+    ]
+    
+    # Admitir otras variantes de UnidadNegocio
+    encabezados = [
+        "unidad_negocio"
+        if col in ("unidadnegocio", "unidad_de_negocio")
+        else col
+        for col in encabezados
+    ]
+    
+    # Validar encabezados duplicados
+    if len(encabezados) != len(set(encabezados)):
+        st.error(
+            f"Hay encabezados duplicados: {encabezados}"
         )
+        st.stop()
+    
+    # Validar columnas obligatorias
+    faltantes = [
+        col for col in COLUMNAS
+        if col not in encabezados
+    ]
+    
+    if faltantes:
+        st.error(
+            f"Faltan columnas en Google Sheets: {faltantes}"
+        )
+        st.info(
+            f"Encabezados encontrados: {encabezados}"
+        )
+        st.stop()
+    
+    # Construir DataFrame
+    df = pd.DataFrame(
+        valores[1:],
+        columns=encabezados
+    )
+    
+    # Respetar orden de columnas
+    df = df[COLUMNAS].copy()
 
-    df = pd.DataFrame(valores[1:], columns=encabezados)
 
     if "fecha" in df.columns:
         df["fecha"] = df["fecha"].astype(str).str.strip()
